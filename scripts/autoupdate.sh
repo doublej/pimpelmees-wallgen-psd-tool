@@ -51,9 +51,10 @@ if [ ! -f "$ZIP_FILE" ]; then
     exit 1
 fi
 
-# Replace app bundle
-rm -rf "$PROJECT_DIR/${APP_NAME}.app"
-ditto -x -k "$ZIP_FILE" "$PROJECT_DIR"
+# Replace app bundle in build/
+mkdir -p "$PROJECT_DIR/build"
+rm -rf "$PROJECT_DIR/build/${APP_NAME}.app"
+ditto -x -k "$ZIP_FILE" "$PROJECT_DIR/build"
 echo "$LATEST_VERSION" > "$VERSION_FILE"
 
 echo "Updated to $LATEST_VERSION"
