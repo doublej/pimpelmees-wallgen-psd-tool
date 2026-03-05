@@ -23,7 +23,7 @@ function showWelcome() {
     title.alignment = ["center", "top"];
     title.graphics.font = ScriptUI.newFont("dialog", "Bold", 16);
 
-    var sub = dlg.add("statictext", undefined, "Validates specs  \u2022  Converts to TIFF");
+    var sub = dlg.add("statictext", undefined, "Controleert specs  \u2022  Converteert naar TIFF");
     sub.alignment = ["center", "top"];
 
     if (CURRENT_VERSION) {
@@ -37,7 +37,7 @@ function showWelcome() {
         updateBar.margins = [10, 6, 10, 6];
         updateBar.alignment = ["center", "top"];
         var updateTxt = updateBar.add("statictext", undefined,
-            "\u2B06  Update available: v" + UPDATE_VERSION + "  \u2014  run autoupdate.sh");
+            "\u2B06  Update beschikbaar: v" + UPDATE_VERSION + "  \u2014  voer autoupdate.sh uit");
         updateTxt.graphics.font = ScriptUI.newFont("dialog", "Bold", 11);
     }
 
@@ -46,9 +46,9 @@ function showWelcome() {
     var btns = dlg.add("group");
     btns.alignment = ["center", "bottom"];
     btns.spacing = 15;
-    var openBtn = btns.add("button", undefined, "Open File\u2026", { name: "ok" });
-    var installBtn = btns.add("button", undefined, "Install to Scripts Menu");
-    var cancelBtn = btns.add("button", undefined, "Cancel", { name: "cancel" });
+    var openBtn = btns.add("button", undefined, "Open bestand\u2026", { name: "ok" });
+    var installBtn = btns.add("button", undefined, "Installeer in Scripts-menu");
+    var cancelBtn = btns.add("button", undefined, "Annuleren", { name: "cancel" });
 
     var action = "cancel";
     openBtn.onClick = function () { action = "open"; dlg.close(); };
@@ -68,12 +68,12 @@ function installToPlugins() {
     var scriptFile = new File($.fileName);
     var psApp = new Folder("/Applications").getFiles("Adobe Photoshop*");
     if (psApp.length === 0) {
-        alert("Could not find Photoshop in /Applications.");
+        alert("Kan Photoshop niet vinden in /Applications.");
         return;
     }
     var scriptsDir = new Folder(psApp[psApp.length - 1].fsName + "/Presets/Scripts");
     if (!scriptsDir.exists) {
-        alert("Scripts folder not found:\n" + scriptsDir.fsName);
+        alert("Scripts-map niet gevonden:\n" + scriptsDir.fsName);
         return;
     }
     var dest = scriptsDir.fsName + "/" + SCRIPT_NAME + ".jsx";
@@ -87,14 +87,14 @@ function installToPlugins() {
     }
 
     if (!installed) {
-        alert("Installation cancelled or failed.\n\nYou can copy manually:\n" + src + "\n\u2192 " + scriptsDir.fsName);
+        alert("Installatie geannuleerd of mislukt.\n\nJe kunt handmatig kopi\u00EBren:\n" + src + "\n\u2192 " + scriptsDir.fsName);
         return;
     }
 
-    var msg = "Script installed successfully!\n\n"
-        + "After restart you will find it at:\n"
-        + "File \u2192 Scripts \u2192 " + SCRIPT_NAME + "\n\n"
-        + "Restart Photoshop now?";
+    var msg = "Script succesvol ge\u00EFnstalleerd!\n\n"
+        + "Na herstart vind je het bij:\n"
+        + "Bestand \u2192 Scripts \u2192 " + SCRIPT_NAME + "\n\n"
+        + "Photoshop nu herstarten?";
 
     if (confirm(msg)) {
         var psName = psApp[psApp.length - 1].name;
@@ -105,7 +105,7 @@ function installToPlugins() {
 function pickDocument() {
     // No open documents — go straight to file picker
     if (app.documents.length === 0) {
-        var f = File.openDialog("Select a PSD file", "*.psd");
+        var f = File.openDialog("Selecteer een PSD-bestand", "*.psd");
         if (!f) return null;
         var d = app.open(f);
         return { doc: d, file: f };
@@ -118,13 +118,13 @@ function pickDocument() {
         docs.push({ doc: d, name: d.name, path: d.fullName ? d.fullName.fsName : "" });
     }
 
-    var dlg = new Window("dialog", SCRIPT_NAME + " \u2014 Select Document");
+    var dlg = new Window("dialog", SCRIPT_NAME + " \u2014 Selecteer document");
     dlg.orientation = "column";
     dlg.alignChildren = ["fill", "top"];
     dlg.margins = [20, 20, 20, 15];
     dlg.spacing = 10;
 
-    dlg.add("statictext", undefined, "Open documents:");
+    dlg.add("statictext", undefined, "Geopende documenten:");
 
     var list = dlg.add("listbox", [0, 0, 450, Math.min(docs.length * 24 + 8, 200)], [],
         { multiselect: false });
@@ -134,23 +134,23 @@ function pickDocument() {
     }
     list.selection = 0;
 
-    var sep = dlg.add("statictext", undefined, "\u2014  or  \u2014");
+    var sep = dlg.add("statictext", undefined, "\u2014  of  \u2014");
     sep.alignment = ["center", "top"];
 
-    var browseBtn = dlg.add("button", undefined, "Open File from Disk\u2026");
+    var browseBtn = dlg.add("button", undefined, "Open bestand van schijf\u2026");
     browseBtn.alignment = ["center", "top"];
 
     var btns = dlg.add("group");
     btns.alignment = ["right", "bottom"];
     btns.spacing = 10;
-    btns.add("button", undefined, "Cancel", { name: "cancel" });
-    var useBtn = btns.add("button", undefined, "Use Selected", { name: "ok" });
+    btns.add("button", undefined, "Annuleren", { name: "cancel" });
+    var useBtn = btns.add("button", undefined, "Gebruik selectie", { name: "ok" });
 
     var action = "cancel";
     var browsedFile = null;
 
     browseBtn.onClick = function () {
-        var f = File.openDialog("Select a PSD file", "*.psd");
+        var f = File.openDialog("Selecteer een PSD-bestand", "*.psd");
         if (f) { browsedFile = f; action = "browse"; dlg.close(); }
     };
     useBtn.onClick = function () { action = "select"; dlg.close(); };
@@ -221,7 +221,7 @@ function main() {
     saveTiff(doc, tiffFile);
     doc.close(SaveOptions.DONOTSAVECHANGES);
 
-    alert("Saved: " + decodeURI(tiffFile.name));
+    alert("Opgeslagen: " + decodeURI(tiffFile.name));
 }
 
 // === Analysis ===
@@ -305,18 +305,18 @@ function showPreviewDialog(di, ooc, semiTransparent) {
     addLogo(dlg);
 
     // --- Source ---
-    var src = dlg.add("panel", undefined, "Source PSD");
+    var src = dlg.add("panel", undefined, "Bron-PSD");
     src.alignChildren = ["fill", "top"];
     src.margins = [15, 18, 15, 12];
     src.spacing = 6;
 
-    addRow(src, "File", di.name);
-    addRow(src, "File size", formatBytes(di.psdSize));
-    addRow(src, "Dimensions", di.widthPx + " \u00D7 " + di.heightPx + " px");
-    addRow(src, "Physical", di.widthCm + " \u00D7 " + di.heightCm + " cm");
-    addRow(src, "Resolution", di.dpi + " DPI");
-    addRow(src, "Color", di.colorMode + " / " + di.bitsPerChannel + "-bit");
-    addRow(src, "ICC Profile", di.iccProfile);
+    addRow(src, "Bestand", di.name);
+    addRow(src, "Bestandsgrootte", formatBytes(di.psdSize));
+    addRow(src, "Afmetingen", di.widthPx + " \u00D7 " + di.heightPx + " px");
+    addRow(src, "Fysiek", di.widthCm + " \u00D7 " + di.heightCm + " cm");
+    addRow(src, "Resolutie", di.dpi + " DPI");
+    addRow(src, "Kleur", di.colorMode + " / " + di.bitsPerChannel + "-bit");
+    addRow(src, "ICC-profiel", di.iccProfile);
 
     // --- Issues ---
     var trimCb = null;
@@ -324,26 +324,26 @@ function showPreviewDialog(di, ooc, semiTransparent) {
     var hasIssues = ooc.hasExcess || semiTransparent;
 
     if (hasIssues) {
-        var issues = dlg.add("panel", undefined, "Issues");
+        var issues = dlg.add("panel", undefined, "Problemen");
         issues.alignChildren = ["fill", "top"];
         issues.margins = [15, 18, 15, 12];
         issues.spacing = 8;
 
         if (ooc.hasExcess) {
-            addWarning(issues, "Image data outside canvas \u2014 ~" + formatBytes(ooc.savedBytes) + " wasted");
-            trimCb = issues.add("checkbox", undefined, "  Trim to canvas bounds");
+            addWarning(issues, "Beelddata buiten canvas \u2014 ~" + formatBytes(ooc.savedBytes) + " verspild");
+            trimCb = issues.add("checkbox", undefined, "  Bijsnijden tot canvasgrenzen");
             trimCb.value = true;
         }
         if (semiTransparent) {
             if (ooc.hasExcess) issues.add("statictext", undefined, "");
-            addWarning(issues, "Semi-transparent pixels found");
-            whiteCb = issues.add("checkbox", undefined, "  Place white background behind");
+            addWarning(issues, "Semi-transparante pixels gevonden");
+            whiteCb = issues.add("checkbox", undefined, "  Witte achtergrond erachter plaatsen");
             whiteCb.value = true;
         }
     }
 
     // --- Output specs ---
-    var out = dlg.add("panel", undefined, "TIFF Output Settings");
+    var out = dlg.add("panel", undefined, "TIFF-uitvoerinstellingen");
     out.alignChildren = ["fill", "top"];
     out.margins = [15, 18, 15, 12];
     out.spacing = 6;
@@ -351,7 +351,7 @@ function showPreviewDialog(di, ooc, semiTransparent) {
     var nameRow = out.add("group");
     nameRow.alignment = ["fill", "top"];
     nameRow.spacing = 8;
-    var nameLbl = nameRow.add("statictext", undefined, "Filename");
+    var nameLbl = nameRow.add("statictext", undefined, "Bestandsnaam");
     nameLbl.preferredSize = [LABEL_W, -1];
     nameLbl.graphics.font = ScriptUI.newFont("dialog", "Bold", 12);
     var defaultName = toSnakeCase(di.name.replace(/\.psd$/i, ""));
@@ -360,18 +360,18 @@ function showPreviewDialog(di, ooc, semiTransparent) {
         nameInput.text = toSnakeCase(nameInput.text);
     });
 
-    addRow(out, "Format", "TIFF");
-    addRow(out, "Compression", "LZW (lossless)");
-    addRow(out, "Layers", "Flattened to 1");
-    addRow(out, "Alpha", "Discarded");
-    addRow(out, "Bit depth", di.bitsPerChannel + "-bit / channel");
-    addRow(out, "ICC Profile", di.iccProfile + "  \u2713 kept");
+    addRow(out, "Formaat", "TIFF");
+    addRow(out, "Compressie", "LZW (lossless)");
+    addRow(out, "Lagen", "Samengevoegd tot 1");
+    addRow(out, "Alpha", "Verwijderd");
+    addRow(out, "Bitdiepte", di.bitsPerChannel + "-bit / kanaal");
+    addRow(out, "ICC-profiel", di.iccProfile + "  \u2713 behouden");
 
     // --- No issues badge ---
     if (!hasIssues) {
         var ok = dlg.add("group");
         ok.alignment = ["center", "top"];
-        var okTxt = ok.add("statictext", undefined, "\u2713  No issues found \u2014 ready to convert");
+        var okTxt = ok.add("statictext", undefined, "\u2713  Geen problemen gevonden \u2014 klaar om te converteren");
         okTxt.graphics.font = ScriptUI.newFont("dialog", "Bold", 12);
     }
 
@@ -379,8 +379,8 @@ function showPreviewDialog(di, ooc, semiTransparent) {
     var btns = dlg.add("group");
     btns.alignment = ["right", "bottom"];
     btns.spacing = 10;
-    btns.add("button", undefined, "Cancel", { name: "cancel" });
-    btns.add("button", undefined, "Save as TIFF", { name: "ok" });
+    btns.add("button", undefined, "Annuleren", { name: "cancel" });
+    btns.add("button", undefined, "Opslaan als TIFF", { name: "ok" });
 
     if (dlg.show() !== 1) return null;
 
