@@ -388,7 +388,7 @@ function showPreviewDialog(di, ooc, semiTransparent) {
         issuesPnl.margins = [14, 10, 14, 10];
         issuesPnl.spacing = 8;
         issuesPnl.graphics.backgroundColor = issuesPnl.graphics.newBrush(
-            issuesPnl.graphics.BrushType.SOLID_COLOR, [0.95, 0.88, 0.73]
+            issuesPnl.graphics.BrushType.SOLID_COLOR, [0.35, 0.25, 0.12]
         );
 
         if (ooc.hasExcess) {
@@ -408,11 +408,14 @@ function showPreviewDialog(di, ooc, semiTransparent) {
         okPnl.alignment = ["fill", "top"];
         okPnl.margins = [14, 8, 14, 8];
         okPnl.graphics.backgroundColor = okPnl.graphics.newBrush(
-            okPnl.graphics.BrushType.SOLID_COLOR, [0.85, 0.94, 0.85]
+            okPnl.graphics.BrushType.SOLID_COLOR, [0.15, 0.30, 0.18]
         );
         var okTxt = okPnl.add("statictext", undefined, "\u2713  Geen problemen \u2014 klaar om te converteren");
         okTxt.alignment = ["center", "center"];
         okTxt.graphics.font = ScriptUI.newFont("dialog", "Bold", 12);
+        okTxt.graphics.foregroundColor = okTxt.graphics.newPen(
+            okTxt.graphics.PenType.SOLID_COLOR, [0.75, 1, 0.8], 1
+        );
 
         addSpacer(dlg, 4);
     }
@@ -488,6 +491,9 @@ function addWarning(parent, text) {
     row.alignment = ["fill", "top"];
     var txt = row.add("statictext", undefined, "\u26A0  " + text);
     txt.graphics.font = ScriptUI.newFont("dialog", "Bold", 11);
+    txt.graphics.foregroundColor = txt.graphics.newPen(
+        txt.graphics.PenType.SOLID_COLOR, [1, 0.85, 0.5], 1
+    );
 }
 
 function addDivider(parent) {
