@@ -3,7 +3,8 @@
 #target photoshop
 
 var SCRIPT_NAME = "Pimpelmees Wallgen PSD tool";
-var LABEL_W = 110;
+var LABEL_W = 130;
+var DLG_W = 520;
 var LOGO_FILE = findLogo();
 var CURRENT_VERSION = readVersionFile();
 var UPDATE_VERSION = readUpdateFile();
@@ -15,90 +16,111 @@ function showWelcome() {
     var dlg = new Window("dialog", SCRIPT_NAME);
     dlg.orientation = "column";
     dlg.alignChildren = ["fill", "center"];
-    dlg.margins = [30, 25, 30, 20];
+    dlg.margins = [36, 30, 36, 24];
+    dlg.spacing = 4;
+    dlg.preferredSize = [420, -1];
 
     addLogo(dlg);
 
+    addSpacer(dlg, 6);
+
     var title = dlg.add("statictext", undefined, SCRIPT_NAME);
     title.alignment = ["center", "top"];
-    title.graphics.font = ScriptUI.newFont("dialog", "Bold", 16);
+    title.graphics.font = ScriptUI.newFont("dialog", "Bold", 18);
 
     var sub = dlg.add("statictext", undefined, "Controleert specs  \u2022  Converteert naar TIFF");
     sub.alignment = ["center", "top"];
+    sub.graphics.font = ScriptUI.newFont("dialog", "Regular", 12);
 
     if (CURRENT_VERSION) {
-        var ver = dlg.add("statictext", undefined, "v" + CURRENT_VERSION);
+        addSpacer(dlg, 2);
+        var ver = dlg.add("statictext", undefined, "versie " + CURRENT_VERSION);
         ver.alignment = ["center", "top"];
+        ver.graphics.font = ScriptUI.newFont("dialog", "Regular", 10);
     }
 
     if (UPDATE_VERSION) {
-        var updateBar = dlg.add("group");
-        updateBar.alignment = ["fill", "top"];
-        updateBar.margins = [10, 6, 10, 6];
-        updateBar.alignment = ["center", "top"];
-        var updateTxt = updateBar.add("statictext", undefined,
-            "\u2B06  Update beschikbaar: v" + UPDATE_VERSION + "  \u2014  voer autoupdate.sh uit");
-        updateTxt.graphics.font = ScriptUI.newFont("dialog", "Bold", 11);
+        addSpacer(dlg, 8);
+        var updatePnl = dlg.add("panel", undefined, undefined, { borderStyle: "none" });
+        updatePnl.alignment = ["fill", "top"];
+        updatePnl.margins = [12, 8, 12, 8];
+        updatePnl.graphics.backgroundColor = updatePnl.graphics.newBrush(
+            updatePnl.graphics.BrushType.SOLID_COLOR, [0.18, 0.55, 0.34]
+        );
+        var updateRow = updatePnl.add("group");
+        updateRow.alignment = ["center", "center"];
+        updateRow.spacing = 12;
+        var updateTxt = updateRow.add("statictext", undefined,
+            "\u2B06  v" + UPDATE_VERSION + " beschikbaar");
+        updateTxt.graphics.font = ScriptUI.newFont("dialog", "Bold", 12);
+        updateTxt.graphics.foregroundColor = updateTxt.graphics.newPen(
+            updateTxt.graphics.PenType.SOLID_COLOR, [1, 1, 1], 1
+        );
+        var updateBtn = updateRow.add("button", undefined, "Nu updaten");
+        updateBtn.preferredSize = [110, 26];
+        updateBtn.onClick = function () { dlg.close(); runAutoUpdate(); };
     }
 
-    dlg.add("statictext", undefined, "");
+    addSpacer(dlg, 12);
+    addDivider(dlg);
+    addSpacer(dlg, 12);
 
-    var btns = dlg.add("group");
-    btns.alignment = ["center", "bottom"];
-    btns.spacing = 15;
-    var openBtn = btns.add("button", undefined, "Open bestand\u2026", { name: "ok" });
-    var installBtn = btns.add("button", undefined, "Installeer in Scripts-menu");
-    var cancelBtn = btns.add("button", undefined, "Annuleren", { name: "cancel" });
+    var btnRow = dlg.add("group");
+    btnRow.alignment = ["fill", "top"];
+    btnRow.spacing = 10;
+    var openBtn = btnRow.add("button", undefined, "Open bestand\u2026", { name: "ok" });
+    openBtn.alignment = ["fill", "top"];
+    openBtn.preferredSize = [-1, 36];
+    var cancelBtn = btnRow.add("button", undefined, "Annuleren", { name: "cancel" });
+    cancelBtn.preferredSize = [110, 36];
 
     var action = "cancel";
     openBtn.onClick = function () { action = "open"; dlg.close(); };
-    installBtn.onClick = function () { action = "install"; dlg.close(); };
     cancelBtn.onClick = function () { action = "cancel"; dlg.close(); };
 
     dlg.show();
 
     if (action === "open") {
         main();
-    } else if (action === "install") {
-        installToPlugins();
     }
 }
 
-function installToPlugins() {
-    var scriptFile = new File($.fileName);
-    var psApp = new Folder("/Applications").getFiles("Adobe Photoshop*");
-    if (psApp.length === 0) {
-        alert("Kan Photoshop niet vinden in /Applications.");
-        return;
-    }
-    var scriptsDir = new Folder(psApp[psApp.length - 1].fsName + "/Presets/Scripts");
-    if (!scriptsDir.exists) {
-        alert("Scripts-map niet gevonden:\n" + scriptsDir.fsName);
-        return;
-    }
-    var dest = scriptsDir.fsName + "/" + SCRIPT_NAME + ".jsx";
-    var src = scriptFile.fsName;
+function runAutoUpdate() {
+    var repo = "doublej/pimpelmees-wallgen-psd-tool";
+    var appName = "Pimpelmees Wallgen PSD tool";
 
-    var installed = scriptFile.copy(new File(dest));
-    if (!installed) {
-        var esc = function (s) { return s.replace(/'/g, "'\\''"); };
-        var cmd = "osascript -e 'do shell script \"cp \\\"" + esc(src) + "\\\" \\\"" + esc(dest) + "\\\"\" with administrator privileges'";
-        installed = (app.system(cmd) === 0);
+    // Resolve the .app bundle path from the script location
+    var scriptDir = new File($.fileName).parent.fsName;
+    var appDir = scriptDir;
+    // If running from inside .app/Contents/Resources, go up to the .app parent
+    if (scriptDir.indexOf(".app/") !== -1) {
+        appDir = scriptDir.replace(/\.app\/.*/, ".app/..");
     }
 
-    if (!installed) {
-        alert("Installatie geannuleerd of mislukt.\n\nJe kunt handmatig kopi\u00EBren:\n" + src + "\n\u2192 " + scriptsDir.fsName);
-        return;
-    }
+    var marker = "/tmp/pimpelmees-update-ok";
+    var esc = function (s) { return s.replace(/'/g, "'\\''"); };
+    var cmd = "rm -f '" + marker + "'"
+        + " && TMPDIR=$(mktemp -d)"
+        + " && curl -sfL --max-time 30 -o \"$TMPDIR/update.zip\""
+        + " 'https://github.com/" + repo + "/releases/latest/download/" + appName.replace(/ /g, ".") + ".zip'"
+        + " && rm -rf '" + esc(appDir) + "/" + esc(appName) + ".app'"
+        + " && ditto -x -k \"$TMPDIR/update.zip\" '" + esc(appDir) + "'"
+        + " && rm -rf \"$TMPDIR\""
+        + " && touch '" + marker + "'";
 
-    var msg = "Script succesvol ge\u00EFnstalleerd!\n\n"
-        + "Na herstart vind je het bij:\n"
-        + "Bestand \u2192 Scripts \u2192 " + SCRIPT_NAME + "\n\n"
-        + "Photoshop nu herstarten?";
+    app.system(cmd);
 
-    if (confirm(msg)) {
-        var psName = psApp[psApp.length - 1].name;
-        app.system("osascript -e 'tell application \"" + psName + "\" to quit' && sleep 2 && open -a \"" + psName + "\" &");
+    var ok = new File(marker);
+    if (ok.exists) {
+        ok.remove();
+        // Update the temp file so the banner disappears next launch
+        try {
+            var f = new File("/tmp/pimpelmees-psd-tool-update.txt");
+            if (f.exists) f.remove();
+        } catch (e) {}
+        alert("Update naar v" + UPDATE_VERSION + " gelukt!\n\nOpen de app opnieuw om de nieuwe versie te gebruiken.");
+    } else {
+        alert("Update mislukt.\n\nProbeer het later opnieuw of download handmatig:\nhttps://github.com/" + repo + "/releases/latest");
     }
 }
 
@@ -118,15 +140,23 @@ function pickDocument() {
         docs.push({ doc: d, name: d.name, path: d.fullName ? d.fullName.fsName : "" });
     }
 
-    var dlg = new Window("dialog", SCRIPT_NAME + " \u2014 Selecteer document");
+    var dlg = new Window("dialog", SCRIPT_NAME);
     dlg.orientation = "column";
     dlg.alignChildren = ["fill", "top"];
-    dlg.margins = [20, 20, 20, 15];
-    dlg.spacing = 10;
+    dlg.margins = [28, 24, 28, 20];
+    dlg.spacing = 6;
+    dlg.preferredSize = [DLG_W, -1];
 
-    dlg.add("statictext", undefined, "Geopende documenten:");
+    var header = dlg.add("statictext", undefined, "Selecteer document");
+    header.alignment = ["left", "top"];
+    header.graphics.font = ScriptUI.newFont("dialog", "Bold", 15);
 
-    var list = dlg.add("listbox", [0, 0, 450, Math.min(docs.length * 24 + 8, 200)], [],
+    var hint = dlg.add("statictext", undefined, "Kies een geopend document of open een nieuw bestand.");
+    hint.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
+
+    addSpacer(dlg, 6);
+
+    var list = dlg.add("listbox", [0, 0, DLG_W - 56, Math.min(docs.length * 26 + 10, 180)], [],
         { multiselect: false });
     for (var i = 0; i < docs.length; i++) {
         var item = list.add("item", docs[i].name);
@@ -134,17 +164,24 @@ function pickDocument() {
     }
     list.selection = 0;
 
-    var sep = dlg.add("statictext", undefined, "\u2014  of  \u2014");
-    sep.alignment = ["center", "top"];
+    addSpacer(dlg, 4);
+    addDivider(dlg);
+    addSpacer(dlg, 4);
 
     var browseBtn = dlg.add("button", undefined, "Open bestand van schijf\u2026");
-    browseBtn.alignment = ["center", "top"];
+    browseBtn.alignment = ["fill", "top"];
+    browseBtn.preferredSize = [-1, 32];
+
+    addSpacer(dlg, 8);
 
     var btns = dlg.add("group");
-    btns.alignment = ["right", "bottom"];
+    btns.alignment = ["fill", "bottom"];
     btns.spacing = 10;
     btns.add("button", undefined, "Annuleren", { name: "cancel" });
+    var spacer = btns.add("group");
+    spacer.alignment = ["fill", "center"];
     var useBtn = btns.add("button", undefined, "Gebruik selectie", { name: "ok" });
+    useBtn.preferredSize = [160, 32];
 
     var action = "cancel";
     var browsedFile = null;
@@ -299,24 +336,45 @@ function showPreviewDialog(di, ooc, semiTransparent) {
     var dlg = new Window("dialog", SCRIPT_NAME);
     dlg.orientation = "column";
     dlg.alignChildren = ["fill", "top"];
-    dlg.margins = [20, 20, 20, 15];
-    dlg.spacing = 12;
+    dlg.margins = [28, 24, 28, 20];
+    dlg.spacing = 6;
+    dlg.preferredSize = [DLG_W, -1];
 
-    addLogo(dlg);
+    // --- Header ---
+    var header = dlg.add("statictext", undefined, di.name);
+    header.alignment = ["left", "top"];
+    header.graphics.font = ScriptUI.newFont("dialog", "Bold", 15);
 
-    // --- Source ---
-    var src = dlg.add("panel", undefined, "Bron-PSD");
-    src.alignChildren = ["fill", "top"];
-    src.margins = [15, 18, 15, 12];
-    src.spacing = 6;
+    var dimLine = di.widthPx + " \u00D7 " + di.heightPx + " px"
+        + "    " + di.widthCm + " \u00D7 " + di.heightCm + " cm"
+        + "    " + di.dpi + " DPI";
+    var dims = dlg.add("statictext", undefined, dimLine);
+    dims.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
 
-    addRow(src, "Bestand", di.name);
-    addRow(src, "Bestandsgrootte", formatBytes(di.psdSize));
-    addRow(src, "Afmetingen", di.widthPx + " \u00D7 " + di.heightPx + " px");
-    addRow(src, "Fysiek", di.widthCm + " \u00D7 " + di.heightCm + " cm");
-    addRow(src, "Resolutie", di.dpi + " DPI");
-    addRow(src, "Kleur", di.colorMode + " / " + di.bitsPerChannel + "-bit");
-    addRow(src, "ICC-profiel", di.iccProfile);
+    addSpacer(dlg, 4);
+    addDivider(dlg);
+    addSpacer(dlg, 4);
+
+    // --- Source details (compact two-column) ---
+    var srcGrid = dlg.add("group");
+    srcGrid.orientation = "row";
+    srcGrid.alignment = ["fill", "top"];
+    srcGrid.spacing = 20;
+
+    var col1 = srcGrid.add("group");
+    col1.orientation = "column";
+    col1.alignChildren = ["fill", "top"];
+    col1.spacing = 4;
+    addCompactRow(col1, "Bestandsgrootte", formatBytes(di.psdSize));
+    addCompactRow(col1, "Kleurmodus", di.colorMode + " / " + di.bitsPerChannel + "-bit");
+
+    var col2 = srcGrid.add("group");
+    col2.orientation = "column";
+    col2.alignChildren = ["fill", "top"];
+    col2.spacing = 4;
+    addCompactRow(col2, "ICC-profiel", di.iccProfile);
+
+    addSpacer(dlg, 6);
 
     // --- Issues ---
     var trimCb = null;
@@ -324,63 +382,82 @@ function showPreviewDialog(di, ooc, semiTransparent) {
     var hasIssues = ooc.hasExcess || semiTransparent;
 
     if (hasIssues) {
-        var issues = dlg.add("panel", undefined, "Problemen");
-        issues.alignChildren = ["fill", "top"];
-        issues.margins = [15, 18, 15, 12];
-        issues.spacing = 8;
+        var issuesPnl = dlg.add("panel", undefined, undefined, { borderStyle: "none" });
+        issuesPnl.alignment = ["fill", "top"];
+        issuesPnl.alignChildren = ["fill", "top"];
+        issuesPnl.margins = [14, 10, 14, 10];
+        issuesPnl.spacing = 8;
+        issuesPnl.graphics.backgroundColor = issuesPnl.graphics.newBrush(
+            issuesPnl.graphics.BrushType.SOLID_COLOR, [0.95, 0.88, 0.73]
+        );
 
         if (ooc.hasExcess) {
-            addWarning(issues, "Beelddata buiten canvas \u2014 ~" + formatBytes(ooc.savedBytes) + " verspild");
-            trimCb = issues.add("checkbox", undefined, "  Bijsnijden tot canvasgrenzen");
+            addWarning(issuesPnl, "Beelddata buiten canvas \u2014 ~" + formatBytes(ooc.savedBytes) + " verspild");
+            trimCb = issuesPnl.add("checkbox", undefined, "  Bijsnijden tot canvasgrenzen");
             trimCb.value = true;
         }
         if (semiTransparent) {
-            if (ooc.hasExcess) issues.add("statictext", undefined, "");
-            addWarning(issues, "Semi-transparante pixels gevonden");
-            whiteCb = issues.add("checkbox", undefined, "  Witte achtergrond erachter plaatsen");
+            addWarning(issuesPnl, "Semi-transparante pixels gevonden");
+            whiteCb = issuesPnl.add("checkbox", undefined, "  Witte achtergrond erachter plaatsen");
             whiteCb.value = true;
         }
+
+        addSpacer(dlg, 4);
+    } else {
+        var okPnl = dlg.add("panel", undefined, undefined, { borderStyle: "none" });
+        okPnl.alignment = ["fill", "top"];
+        okPnl.margins = [14, 8, 14, 8];
+        okPnl.graphics.backgroundColor = okPnl.graphics.newBrush(
+            okPnl.graphics.BrushType.SOLID_COLOR, [0.85, 0.94, 0.85]
+        );
+        var okTxt = okPnl.add("statictext", undefined, "\u2713  Geen problemen \u2014 klaar om te converteren");
+        okTxt.alignment = ["center", "center"];
+        okTxt.graphics.font = ScriptUI.newFont("dialog", "Bold", 12);
+
+        addSpacer(dlg, 4);
     }
 
-    // --- Output specs ---
-    var out = dlg.add("panel", undefined, "TIFF-uitvoerinstellingen");
-    out.alignChildren = ["fill", "top"];
-    out.margins = [15, 18, 15, 12];
-    out.spacing = 6;
+    addDivider(dlg);
+    addSpacer(dlg, 6);
 
-    var nameRow = out.add("group");
+    // --- Output settings ---
+    var outHeader = dlg.add("statictext", undefined, "TIFF-uitvoer");
+    outHeader.graphics.font = ScriptUI.newFont("dialog", "Bold", 13);
+
+    addSpacer(dlg, 4);
+
+    var nameRow = dlg.add("group");
     nameRow.alignment = ["fill", "top"];
-    nameRow.spacing = 8;
+    nameRow.spacing = 10;
     var nameLbl = nameRow.add("statictext", undefined, "Bestandsnaam");
     nameLbl.preferredSize = [LABEL_W, -1];
     nameLbl.graphics.font = ScriptUI.newFont("dialog", "Bold", 12);
     var defaultName = toSnakeCase(di.name.replace(/\.psd$/i, ""));
-    var nameInput = nameRow.add("edittext", [0, 0, 350, 24], defaultName);
+    var nameInput = nameRow.add("edittext", undefined, defaultName);
+    nameInput.alignment = ["fill", "center"];
+    nameInput.preferredSize = [-1, 26];
     nameInput.addEventListener("blur", function () {
         nameInput.text = toSnakeCase(nameInput.text);
     });
 
-    addRow(out, "Formaat", "TIFF");
-    addRow(out, "Compressie", "LZW (lossless)");
-    addRow(out, "Lagen", "Samengevoegd tot 1");
-    addRow(out, "Alpha", "Verwijderd");
-    addRow(out, "Bitdiepte", di.bitsPerChannel + "-bit / kanaal");
-    addRow(out, "ICC-profiel", di.iccProfile + "  \u2713 behouden");
+    addSpacer(dlg, 4);
 
-    // --- No issues badge ---
-    if (!hasIssues) {
-        var ok = dlg.add("group");
-        ok.alignment = ["center", "top"];
-        var okTxt = ok.add("statictext", undefined, "\u2713  Geen problemen gevonden \u2014 klaar om te converteren");
-        okTxt.graphics.font = ScriptUI.newFont("dialog", "Bold", 12);
-    }
+    var specLine = "LZW  \u2022  Samengevoegd  \u2022  Geen alpha  \u2022  "
+        + di.bitsPerChannel + "-bit  \u2022  ICC behouden";
+    var specs = dlg.add("statictext", undefined, specLine);
+    specs.graphics.font = ScriptUI.newFont("dialog", "Regular", 10);
+
+    addSpacer(dlg, 12);
 
     // --- Buttons ---
     var btns = dlg.add("group");
-    btns.alignment = ["right", "bottom"];
+    btns.alignment = ["fill", "bottom"];
     btns.spacing = 10;
     btns.add("button", undefined, "Annuleren", { name: "cancel" });
-    btns.add("button", undefined, "Opslaan als TIFF", { name: "ok" });
+    var spacer = btns.add("group");
+    spacer.alignment = ["fill", "center"];
+    var saveBtn = btns.add("button", undefined, "Opslaan als TIFF", { name: "ok" });
+    saveBtn.preferredSize = [160, 34];
 
     if (dlg.show() !== 1) return null;
 
@@ -394,14 +471,15 @@ function showPreviewDialog(di, ooc, semiTransparent) {
     };
 }
 
-function addRow(parent, label, value) {
+function addCompactRow(parent, label, value) {
     var row = parent.add("group");
     row.alignment = ["fill", "top"];
-    row.spacing = 8;
+    row.spacing = 6;
     var lbl = row.add("statictext", undefined, label);
-    lbl.preferredSize = [LABEL_W, -1];
-    lbl.graphics.font = ScriptUI.newFont("dialog", "Bold", 12);
-    var val = row.add("statictext", [0, 0, 350, 20], value, { truncate: "end" });
+    lbl.graphics.font = ScriptUI.newFont("dialog", "Bold", 11);
+    lbl.preferredSize = [110, -1];
+    var val = row.add("statictext", undefined, value, { truncate: "end" });
+    val.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
     return row;
 }
 
@@ -409,7 +487,18 @@ function addWarning(parent, text) {
     var row = parent.add("group");
     row.alignment = ["fill", "top"];
     var txt = row.add("statictext", undefined, "\u26A0  " + text);
-    txt.graphics.font = ScriptUI.newFont("dialog", "Bold", 12);
+    txt.graphics.font = ScriptUI.newFont("dialog", "Bold", 11);
+}
+
+function addDivider(parent) {
+    var d = parent.add("panel", undefined, undefined, { borderStyle: "etched" });
+    d.alignment = ["fill", "top"];
+    d.preferredSize = [-1, 2];
+}
+
+function addSpacer(parent, h) {
+    var s = parent.add("group");
+    s.preferredSize = [-1, h];
 }
 
 // === Actions ===
