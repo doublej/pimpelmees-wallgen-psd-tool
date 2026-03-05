@@ -20,24 +20,12 @@ if git rev-parse "$TAG" >/dev/null 2>&1; then
     exit 1
 fi
 
-# Assemble .app bundle from src/
-APP="build/${APP_NAME}.app"
-rm -rf build
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+# Build
+scripts/build.sh
 
-cp src/Info.plist       "$APP/Contents/Info.plist"
-cp src/run.sh           "$APP/Contents/MacOS/run.sh"
-chmod +x                "$APP/Contents/MacOS/run.sh"
-cp src/psd-to-tiff.jsx  "$APP/Contents/Resources/psd-to-tiff.jsx"
-cp version.txt          "$APP/Contents/Resources/version.txt"
-cp src/resources/*      "$APP/Contents/Resources/"
-
-echo "Built $APP"
-
-# Build zip
-rm -f "build/$ZIP_NAME"
-ditto -c -k --keepParent "$APP" "build/$ZIP_NAME"
-echo "Built build/$ZIP_NAME ($(du -h "build/$ZIP_NAME" | cut -f1))"
+# Zip
+ditto -c -k --keepParent "build/${APP_NAME}.app" "build/$ZIP_NAME"
+echo "Packaged build/$ZIP_NAME ($(du -h "build/$ZIP_NAME" | cut -f1))"
 
 # Tag and push (bypass global beads hooks)
 git tag "$TAG"
