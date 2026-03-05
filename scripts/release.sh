@@ -20,21 +20,31 @@ if git rev-parse "$TAG" >/dev/null 2>&1; then
     exit 1
 fi
 
-# Sync sources into the app bundle
-cp psd-to-tiff.jsx "${APP_NAME}.app/Contents/Resources/psd-to-tiff.jsx"
-cp version.txt "${APP_NAME}.app/Contents/Resources/version.txt"
+# Assemble .app bundle from src/
+APP="build/${APP_NAME}.app"
+rm -rf build
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+
+cp src/Info.plist       "$APP/Contents/Info.plist"
+cp src/run.sh           "$APP/Contents/MacOS/run.sh"
+chmod +x                "$APP/Contents/MacOS/run.sh"
+cp src/psd-to-tiff.jsx  "$APP/Contents/Resources/psd-to-tiff.jsx"
+cp version.txt          "$APP/Contents/Resources/version.txt"
+cp src/resources/*      "$APP/Contents/Resources/"
+
+echo "Built $APP"
 
 # Build zip
-rm -f "$ZIP_NAME"
-ditto -c -k --keepParent "${APP_NAME}.app" "$ZIP_NAME"
-echo "Built $ZIP_NAME ($(du -h "$ZIP_NAME" | cut -f1))"
+rm -f "build/$ZIP_NAME"
+ditto -c -k --keepParent "$APP" "build/$ZIP_NAME"
+echo "Built build/$ZIP_NAME ($(du -h "build/$ZIP_NAME" | cut -f1))"
 
 # Tag and push (bypass global beads hooks)
 git tag "$TAG"
 git -c core.hooksPath=.git/hooks push origin main --tags
 
 # Create GitHub release
-gh release create "$TAG" "$ZIP_NAME" \
+gh release create "$TAG" "build/$ZIP_NAME" \
     --title "$TAG" \
     --notes "Release ${VERSION}" \
     --latest
