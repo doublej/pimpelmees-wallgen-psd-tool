@@ -5,6 +5,8 @@
 var SCRIPT_NAME = "Pimpelmees Wallgen PSD tool";
 var LABEL_W = 110;
 var LOGO_FILE = findLogo();
+var CURRENT_VERSION = readVersionFile();
+var UPDATE_VERSION = readUpdateFile();
 
 app.bringToFront();
 showWelcome();
@@ -23,6 +25,21 @@ function showWelcome() {
 
     var sub = dlg.add("statictext", undefined, "Validates specs  \u2022  Converts to TIFF");
     sub.alignment = ["center", "top"];
+
+    if (CURRENT_VERSION) {
+        var ver = dlg.add("statictext", undefined, "v" + CURRENT_VERSION);
+        ver.alignment = ["center", "top"];
+    }
+
+    if (UPDATE_VERSION) {
+        var updateBar = dlg.add("group");
+        updateBar.alignment = ["fill", "top"];
+        updateBar.margins = [10, 6, 10, 6];
+        updateBar.alignment = ["center", "top"];
+        var updateTxt = updateBar.add("statictext", undefined,
+            "\u2B06  Update available: v" + UPDATE_VERSION + "  \u2014  run autoupdate.sh");
+        updateTxt.graphics.font = ScriptUI.newFont("dialog", "Bold", 11);
+    }
 
     dlg.add("statictext", undefined, "");
 
@@ -421,6 +438,29 @@ function saveTiff(doc, file) {
 }
 
 // === Logo ===
+
+function readVersionFile() {
+    var dir = new File($.fileName).parent.fsName;
+    var paths = [dir + "/version.txt", dir + "/../Resources/version.txt"];
+    for (var i = 0; i < paths.length; i++) {
+        var f = new File(paths[i]);
+        if (f.exists && f.open("r")) {
+            var v = f.read().replace(/[\r\n\s]/g, "");
+            f.close();
+            return v || null;
+        }
+    }
+    return null;
+}
+
+function readUpdateFile() {
+    var f = new File("/tmp/pimpelmees-psd-tool-update.txt");
+    if (!f.exists) return null;
+    if (!f.open("r")) return null;
+    var v = f.read().replace(/[\r\n\s]/g, "");
+    f.close();
+    return v || null;
+}
 
 function findLogo() {
     var dir = new File($.fileName).parent.fsName;

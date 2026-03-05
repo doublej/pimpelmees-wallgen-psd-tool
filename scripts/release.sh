@@ -20,8 +20,9 @@ if git rev-parse "$TAG" >/dev/null 2>&1; then
     exit 1
 fi
 
-# Sync the jsx into the app bundle
+# Sync sources into the app bundle
 cp psd-to-tiff.jsx "${APP_NAME}.app/Contents/Resources/psd-to-tiff.jsx"
+cp version.txt "${APP_NAME}.app/Contents/Resources/version.txt"
 
 # Build zip
 rm -f "$ZIP_NAME"
