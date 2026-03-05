@@ -29,9 +29,9 @@ rm -f "$ZIP_NAME"
 ditto -c -k --keepParent "${APP_NAME}.app" "$ZIP_NAME"
 echo "Built $ZIP_NAME ($(du -h "$ZIP_NAME" | cut -f1))"
 
-# Tag and push
+# Tag and push (bypass global beads hooks)
 git tag "$TAG"
-git push origin main --tags
+git -c core.hooksPath=.git/hooks push origin main --tags
 
 # Create GitHub release
 gh release create "$TAG" "$ZIP_NAME" \
