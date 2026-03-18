@@ -37,8 +37,9 @@ function main() {
 
     var ooc = measureOutOfCanvas(doc);
     var semiTransparent = hasSemiTransparentPixels(doc);
+    var iccIssue = checkIccProfile(doc);
 
-    var choices = showPreviewDialog(docInfo, ooc, semiTransparent);
+    var choices = showPreviewDialog(docInfo, ooc, semiTransparent, iccIssue);
     if (!choices) {
         doc.close(SaveOptions.DONOTSAVECHANGES);
         return;

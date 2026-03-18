@@ -1,6 +1,6 @@
 // ui-preview.jsx — Preview and convert dialog
 
-function showPreviewDialog(di, ooc, semiTransparent) {
+function showPreviewDialog(di, ooc, semiTransparent, iccIssue) {
     var dlg = new Window("dialog", SCRIPT_NAME);
     dlg.orientation = "column";
     dlg.alignChildren = ["fill", "top"];
@@ -47,7 +47,7 @@ function showPreviewDialog(di, ooc, semiTransparent) {
     // --- Issues ---
     var trimCb = null;
     var whiteCb = null;
-    var hasIssues = ooc.hasExcess || semiTransparent;
+    var hasIssues = ooc.hasExcess || semiTransparent || iccIssue;
 
     if (hasIssues) {
         var issuesPnl = dlg.add("panel", undefined, undefined, { borderStyle: "none" });
@@ -84,6 +84,17 @@ function showPreviewDialog(di, ooc, semiTransparent) {
             stDesc.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
             whiteCb = issuesPnl.add("checkbox", undefined, "  Witte achtergrond erachter plaatsen");
             whiteCb.value = true;
+        }
+        if (iccIssue) {
+            if (ooc.hasExcess || semiTransparent) addSpacer(issuesPnl, 4);
+            addWarning(issuesPnl, "Verkeerd ICC-profiel: " + iccIssue.profile);
+            var iccDesc = issuesPnl.add("statictext", undefined,
+                "Verwacht profiel: " + iccIssue.expected + ". "
+                + "Converteer het document via Bewerken \u2192 Profiel omzetten "
+                + "naar " + iccIssue.expected + " en probeer opnieuw.", { multiline: true });
+            iccDesc.alignment = ["fill", "top"];
+            iccDesc.preferredSize = [-1, 40];
+            iccDesc.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
         }
 
         addSpacer(dlg, 4);
@@ -145,6 +156,7 @@ function showPreviewDialog(di, ooc, semiTransparent) {
     spacer.alignment = ["fill", "center"];
     var saveBtn = btns.add("button", undefined, "Opslaan als TIFF", { name: "ok" });
     saveBtn.preferredSize = [160, 34];
+    if (iccIssue) saveBtn.enabled = false;
 
     if (dlg.show() !== 1) return null;
 
