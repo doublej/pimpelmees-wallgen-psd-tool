@@ -1,6 +1,6 @@
 // ui-preview.jsx — Preview and convert dialog
 
-function showPreviewDialog(di, ooc, semiTransparent, iccIssue) {
+function showPreviewDialog(di, ooc, semiTransparent, iccIssue, dpiTooHigh) {
     var dlg = new Window("dialog", SCRIPT_NAME);
     dlg.orientation = "column";
     dlg.alignChildren = ["fill", "top"];
@@ -47,7 +47,8 @@ function showPreviewDialog(di, ooc, semiTransparent, iccIssue) {
     // --- Issues ---
     var trimCb = null;
     var whiteCb = null;
-    var hasIssues = ooc.hasExcess || semiTransparent || iccIssue;
+    var downscaleCb = null;
+    var hasIssues = ooc.hasExcess || semiTransparent || iccIssue || dpiTooHigh;
 
     if (hasIssues) {
         var issuesPnl = dlg.add("panel", undefined, undefined, { borderStyle: "none" });
@@ -87,14 +88,36 @@ function showPreviewDialog(di, ooc, semiTransparent, iccIssue) {
         }
         if (iccIssue) {
             if (ooc.hasExcess || semiTransparent) addSpacer(issuesPnl, 4);
-            addWarning(issuesPnl, "Verkeerd ICC-profiel: " + iccIssue.profile);
-            var iccDesc = issuesPnl.add("statictext", undefined,
-                "Verwacht profiel: " + iccIssue.expected + ". "
-                + "Converteer het document via Bewerken \u2192 Profiel omzetten "
-                + "naar " + iccIssue.expected + " en probeer opnieuw.", { multiline: true });
+            var iccMsg, iccHint;
+            if (iccIssue.wrongMode) {
+                iccMsg = "Niet-ondersteunde kleurmodus: " + iccIssue.profile;
+                iccHint = "Alleen Grayscale en CMYK worden ondersteund. "
+                    + "Converteer via Bewerken \u2192 Omzetten naar profiel naar "
+                    + "Grayscale (Dot Gain 20%) of CMYK (FOGRA39) en probeer opnieuw.";
+            } else {
+                iccMsg = "Verkeerd ICC-profiel: " + iccIssue.profile;
+                iccHint = "Verwacht profiel: " + iccIssue.expected + ". "
+                    + "Converteer het document via Bewerken \u2192 Omzetten naar profiel naar "
+                    + iccIssue.expected + " en probeer opnieuw.";
+            }
+            addWarning(issuesPnl, iccMsg);
+            var iccDesc = issuesPnl.add("statictext", undefined, iccHint, { multiline: true });
             iccDesc.alignment = ["fill", "top"];
             iccDesc.preferredSize = [-1, 40];
             iccDesc.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
+        }
+        if (dpiTooHigh) {
+            if (ooc.hasExcess || semiTransparent || iccIssue) addSpacer(issuesPnl, 4);
+            addWarning(issuesPnl, "Resolutie te hoog: " + di.dpi + " DPI");
+            var dpiDesc = issuesPnl.add("statictext", undefined,
+                "Wallgen verwacht " + EXPECTED_DPI + " DPI. Het document wordt "
+                + "gedownscaled naar " + EXPECTED_DPI + " DPI bij opslaan.", { multiline: true });
+            dpiDesc.alignment = ["fill", "top"];
+            dpiDesc.preferredSize = [-1, 30];
+            dpiDesc.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
+            downscaleCb = issuesPnl.add("checkbox", undefined,
+                "  Downscalen naar " + EXPECTED_DPI + " DPI");
+            downscaleCb.value = true;
         }
 
         addSpacer(dlg, 4);
@@ -166,6 +189,7 @@ function showPreviewDialog(di, ooc, semiTransparent, iccIssue) {
     return {
         trim: trimCb ? trimCb.value : false,
         whiteBg: whiteCb ? whiteCb.value : false,
+        downscale: downscaleCb ? downscaleCb.value : false,
         filename: outName
     };
 }

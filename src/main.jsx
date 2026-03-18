@@ -38,8 +38,9 @@ function main() {
     var ooc = measureOutOfCanvas(doc);
     var semiTransparent = hasSemiTransparentPixels(doc);
     var iccIssue = checkIccProfile(doc);
+    var dpiTooHigh = docInfo.dpi > EXPECTED_DPI;
 
-    var choices = showPreviewDialog(docInfo, ooc, semiTransparent, iccIssue);
+    var choices = showPreviewDialog(docInfo, ooc, semiTransparent, iccIssue, dpiTooHigh);
     if (!choices) {
         doc.close(SaveOptions.DONOTSAVECHANGES);
         return;
@@ -50,6 +51,9 @@ function main() {
     }
     if (choices.whiteBg) {
         addWhiteBackground(doc);
+    }
+    if (choices.downscale) {
+        doc.resizeImage(undefined, undefined, EXPECTED_DPI, ResampleMethod.BICUBIC);
     }
     doc.flatten();
 

@@ -61,14 +61,15 @@ function checkIccProfile(doc) {
 
     if (mode === DocumentMode.GRAYSCALE) {
         if (profile.indexOf(EXPECTED_GRAY_ICC) !== -1) return null;
-        return { profile: profile || "None", expected: EXPECTED_GRAY_ICC };
+        return { profile: profile || "None", expected: EXPECTED_GRAY_ICC, wrongMode: false };
     }
     if (mode === DocumentMode.CMYK) {
         if (profile.indexOf(EXPECTED_CMYK_ICC) !== -1) return null;
-        return { profile: profile || "None", expected: EXPECTED_CMYK_ICC };
+        return { profile: profile || "None", expected: EXPECTED_CMYK_ICC, wrongMode: false };
     }
 
-    return { profile: profile || "None", expected: "Grayscale (Dot Gain 20%) of CMYK (FOGRA39)" };
+    var modeName = getColorModeName(mode);
+    return { profile: modeName + " / " + (profile || "None"), expected: null, wrongMode: true };
 }
 
 function showAllLayers(layers) {
