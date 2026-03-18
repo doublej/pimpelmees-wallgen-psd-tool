@@ -10,7 +10,7 @@ LATEST=$(curl -sf --max-time 3 -o /dev/null -w '%{redirect_url}' \
     "https://github.com/$REPO/releases/latest" \
     | sed 's|.*/v||')
 
-if [ -n "$LATEST" ] && [ "$LATEST" != "$VERSION" ]; then
+if [ -n "$LATEST" ] && [ "$(printf '%s\n' "$VERSION" "$LATEST" | sort -V | tail -1)" = "$LATEST" ] && [ "$LATEST" != "$VERSION" ]; then
     echo "$LATEST" > "$UPDATE_FILE"
 fi
 
