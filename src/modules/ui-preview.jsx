@@ -1,6 +1,6 @@
 // ui-preview.jsx — Preview and convert dialog
 
-function showPreviewDialog(di, ooc, semiTransparent, iccIssue, dpiTooHigh) {
+function showPreviewDialog(di, ooc, semiTransparent, iccIssue, dpiTooHigh, hiddenCount) {
     var dlg = new Window("dialog", SCRIPT_NAME);
     dlg.orientation = "column";
     dlg.alignChildren = ["fill", "top"];
@@ -48,7 +48,7 @@ function showPreviewDialog(di, ooc, semiTransparent, iccIssue, dpiTooHigh) {
     var trimCb = null;
     var whiteCb = null;
     var downscaleCb = null;
-    var hasIssues = ooc.hasExcess || semiTransparent || iccIssue || dpiTooHigh;
+    var hasIssues = ooc.hasExcess || semiTransparent || iccIssue || dpiTooHigh || hiddenCount > 0;
 
     if (hasIssues) {
         var issuesPnl = dlg.add("panel", undefined, undefined, { borderStyle: "none" });
@@ -118,6 +118,14 @@ function showPreviewDialog(di, ooc, semiTransparent, iccIssue, dpiTooHigh) {
             downscaleCb = issuesPnl.add("checkbox", undefined,
                 "  Downscalen naar " + EXPECTED_DPI + " DPI");
             downscaleCb.value = true;
+        }
+        if (hiddenCount > 0) {
+            if (ooc.hasExcess || semiTransparent || iccIssue || dpiTooHigh) addSpacer(issuesPnl, 4);
+            var hiddenTxt = issuesPnl.add("statictext", undefined,
+                "\u2139  " + hiddenCount + " verborgen "
+                + (hiddenCount === 1 ? "laag" : "lagen")
+                + " niet meegenomen in de TIFF");
+            hiddenTxt.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
         }
 
         addSpacer(dlg, 4);

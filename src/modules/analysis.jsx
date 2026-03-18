@@ -72,13 +72,15 @@ function checkIccProfile(doc) {
     return { profile: modeName + " / " + (profile || "None"), expected: null, wrongMode: true };
 }
 
-function showAllLayers(layers) {
+function countHiddenLayers(layers) {
+    var count = 0;
     for (var i = 0; i < layers.length; i++) {
-        layers[i].visible = true;
+        if (!layers[i].visible) count++;
         if (layers[i].typename === "LayerSet") {
-            showAllLayers(layers[i].layers);
+            count += countHiddenLayers(layers[i].layers);
         }
     }
+    return count;
 }
 
 function unlockBackground(doc) {

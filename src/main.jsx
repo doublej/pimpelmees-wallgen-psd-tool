@@ -29,7 +29,7 @@ function main() {
     docInfo.widthCm = (docInfo.widthPx / docInfo.dpi * 2.54).toFixed(1);
     docInfo.heightCm = (docInfo.heightPx / docInfo.dpi * 2.54).toFixed(1);
 
-    showAllLayers(doc.layers);
+    var hiddenCount = countHiddenLayers(doc.layers);
     unlockBackground(doc);
     if (doc.layers.length > 1) {
         doc.mergeVisibleLayers();
@@ -40,7 +40,7 @@ function main() {
     var iccIssue = checkIccProfile(doc);
     var dpiTooHigh = docInfo.dpi > EXPECTED_DPI;
 
-    var choices = showPreviewDialog(docInfo, ooc, semiTransparent, iccIssue, dpiTooHigh);
+    var choices = showPreviewDialog(docInfo, ooc, semiTransparent, iccIssue, dpiTooHigh, hiddenCount);
     if (!choices) {
         doc.close(SaveOptions.DONOTSAVECHANGES);
         return;
