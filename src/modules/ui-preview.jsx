@@ -103,7 +103,7 @@ function showPreviewDialog(di, ooc, semiTransparent, iccIssue, dpiTooHigh) {
             addWarning(issuesPnl, iccMsg);
             var iccDesc = issuesPnl.add("statictext", undefined, iccHint, { multiline: true });
             iccDesc.alignment = ["fill", "top"];
-            iccDesc.preferredSize = [-1, 40];
+            iccDesc.preferredSize = [-1, 55];
             iccDesc.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
         }
         if (dpiTooHigh) {
@@ -113,7 +113,7 @@ function showPreviewDialog(di, ooc, semiTransparent, iccIssue, dpiTooHigh) {
                 "Wallgen verwacht " + EXPECTED_DPI + " DPI. Het document wordt "
                 + "gedownscaled naar " + EXPECTED_DPI + " DPI bij opslaan.", { multiline: true });
             dpiDesc.alignment = ["fill", "top"];
-            dpiDesc.preferredSize = [-1, 30];
+            dpiDesc.preferredSize = [-1, 40];
             dpiDesc.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
             downscaleCb = issuesPnl.add("checkbox", undefined,
                 "  Downscalen naar " + EXPECTED_DPI + " DPI");
