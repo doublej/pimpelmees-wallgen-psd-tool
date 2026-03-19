@@ -13,7 +13,7 @@ macOS app that checks PSD specs and converts to print-ready TIFF files via Adobe
 ## Requirements
 
 - macOS
-- Adobe Photoshop (2026 or later)
+- Adobe Photoshop (CC 2014 or later — auto-detected)
 
 ## Install
 
