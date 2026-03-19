@@ -25,6 +25,7 @@ MODULES=(
     src/modules/ui-welcome.jsx
     src/modules/ui-picker.jsx
     src/modules/ui-preview.jsx
+    src/modules/ui-newdoc.jsx
     src/main.jsx
 )
 

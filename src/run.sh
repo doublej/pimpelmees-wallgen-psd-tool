@@ -14,6 +14,15 @@ if [ -n "$LATEST" ] && [ "$(printf '%s\n' "$VERSION" "$LATEST" | sort -V | tail 
     echo "$LATEST" > "$UPDATE_FILE"
 fi
 
+# Self-install to /Applications (replace older version)
+APP_BUNDLE="$(cd "$(dirname "$0")/../.." && pwd)"
+APP_BASENAME="$(basename "$APP_BUNDLE")"
+TARGET="/Applications/$APP_BASENAME"
+if [ "$APP_BUNDLE" != "$TARGET" ] && [[ "$APP_BASENAME" == *.app ]]; then
+    rm -rf "$TARGET"
+    cp -R "$APP_BUNDLE" "$TARGET"
+fi
+
 # Discover newest Adobe Photoshop in /Applications
 PS_APP=""
 
@@ -43,6 +52,25 @@ fi
 if [ -z "$PS_APP" ]; then
     osascript -e 'display dialog "Adobe Photoshop is niet gevonden in /Applications.\n\nInstalleer Adobe Photoshop en probeer het opnieuw." buttons {"OK"} default button "OK" with icon stop with title "Pimpelmees Wallgen PSD tool"'
     exit 1
+fi
+
+# Install bundled ICC profiles if missing
+ICC_DIR="$HOME/Library/ColorSync/Profiles"
+mkdir -p "$ICC_DIR"
+for icc in "$RESOURCES"/*.icc; do
+    [ -f "$icc" ] || continue
+    dest="$ICC_DIR/$(basename "$icc")"
+    [ -f "$dest" ] || cp "$icc" "$dest"
+done
+
+# Install ExtendScript into Photoshop Scripts menu
+SCRIPTS_DIR="/Applications/$PS_APP/Presets/Scripts"
+if [ -d "$SCRIPTS_DIR" ]; then
+    cp "$RESOURCES/psd-to-tiff.jsx" "$SCRIPTS_DIR/Pimpelmees Wallgen PSD tool.jsx"
+    RESDIR="$SCRIPTS_DIR/pimpelmees-resources"
+    mkdir -p "$RESDIR"
+    cp "$RESOURCES/version.txt" "$RESDIR/"
+    cp "$RESOURCES/logo_dialog.png" "$RESDIR/"
 fi
 
 osascript -e 'tell application "'"$PS_APP"'" to do javascript file "'"$RESOURCES/psd-to-tiff.jsx"'"'

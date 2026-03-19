@@ -11,7 +11,9 @@ function pickDocument() {
     var docs = [];
     for (var i = 0; i < app.documents.length; i++) {
         var d = app.documents[i];
-        docs.push({ doc: d, name: d.name, path: d.fullName ? d.fullName.fsName : "" });
+        var path = "";
+        try { path = d.fullName.fsName; } catch (e) {}
+        docs.push({ doc: d, name: d.name, path: path });
     }
 
     var dlg = new Window("dialog", SCRIPT_NAME);
@@ -76,7 +78,9 @@ function pickDocument() {
         var idx = list.selection.index;
         var d = docs[idx].doc;
         app.activeDocument = d;
-        return { doc: d, file: d.fullName || new File(d.name) };
+        var file;
+        try { file = d.fullName; } catch (e) { file = new File(d.name); }
+        return { doc: d, file: file };
     }
     return null;
 }

@@ -10,8 +10,9 @@ showWelcome();
 function main() {
     var result = pickDocument();
     if (!result) return;
-    var doc = result.doc;
+    var originalDoc = result.doc;
     var psdFile = result.file;
+    var doc = originalDoc.duplicate(psdFile.name.replace(/\.[^.]+$/, "") + " (export)");
 
     var bpc = getBitsPerChannel(doc.bitsPerChannel);
 

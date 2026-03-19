@@ -56,19 +56,25 @@ function showWelcome() {
     var btnRow = dlg.add("group");
     btnRow.alignment = ["fill", "top"];
     btnRow.spacing = 10;
-    var openBtn = btnRow.add("button", undefined, "Open bestand\u2026", { name: "ok" });
+    var newBtn = btnRow.add("button", undefined, "Nieuw document\u2026");
+    newBtn.alignment = ["fill", "top"];
+    newBtn.preferredSize = [-1, 36];
+    var openBtn = btnRow.add("button", undefined, "Open bestand\u2026");
     openBtn.alignment = ["fill", "top"];
     openBtn.preferredSize = [-1, 36];
     var cancelBtn = btnRow.add("button", undefined, "Annuleren", { name: "cancel" });
     cancelBtn.preferredSize = [110, 36];
 
     var action = "cancel";
+    newBtn.onClick = function () { action = "newdoc"; dlg.close(); };
     openBtn.onClick = function () { action = "open"; dlg.close(); };
     cancelBtn.onClick = function () { action = "cancel"; dlg.close(); };
 
     dlg.show();
 
-    if (action === "open") {
+    if (action === "newdoc") {
+        showNewDocDialog();
+    } else if (action === "open") {
         main();
     }
 }

@@ -49,3 +49,37 @@ function runAutoUpdate() {
         alert("Update mislukt.\n\nProbeer het later opnieuw of download handmatig:\nhttps://github.com/" + GITHUB_REPO + "/releases/latest");
     }
 }
+
+function addRectGuides(doc) {
+    var docW = RECT_STROKES[RECT_STROKES.length - 1] / 10 * STROKE_W_MM + 2 * BLEED_RECT;
+    var docH = RECT_HEIGHTS_MM[RECT_HEIGHTS_MM.length - 1];
+    var cx = docW / 2;
+    // Vertical guides: symmetric pair for each stroke width, centred
+    for (var i = 0; i < RECT_STROKES.length; i++) {
+        var halfW = RECT_STROKES[i] / 10 * STROKE_W_MM / 2;
+        doc.guides.add(Direction.VERTICAL, UnitValue(mmToPx(cx - halfW), "px"));
+        doc.guides.add(Direction.VERTICAL, UnitValue(mmToPx(cx + halfW), "px"));
+    }
+    // Horizontal guides: heights measured from bottom (skip max = canvas edge)
+    for (var i = 0; i < RECT_HEIGHTS_MM.length - 1; i++) {
+        doc.guides.add(Direction.HORIZONTAL, UnitValue(mmToPx(docH - RECT_HEIGHTS_MM[i]), "px"));
+    }
+}
+
+function createNewDocument(widthPx, heightPx, isMono, docName) {
+    var mode = isMono ? NewDocumentMode.GRAYSCALE : NewDocumentMode.CMYK;
+    var profile = isMono ? NEW_DOC_GRAY_PROFILE : NEW_DOC_CMYK_PROFILE;
+    var doc = app.documents.add(
+        UnitValue(widthPx, "px"), UnitValue(heightPx, "px"),
+        EXPECTED_DPI, docName, mode,
+        DocumentFill.WHITE, 1, BitsPerChannelType.EIGHT, profile
+    );
+    var expected = isMono ? EXPECTED_GRAY_ICC : EXPECTED_CMYK_ICC;
+    if (doc.colorProfileName.indexOf(expected) === -1) {
+        alert("Let op: ICC-profiel \"" + profile + "\" niet gevonden.\n\n"
+            + "Huidig profiel: " + doc.colorProfileName + "\n"
+            + "Wijs het juiste profiel handmatig toe via:\n"
+            + "Bewerken > Profiel toewijzen...");
+    }
+    return doc;
+}
