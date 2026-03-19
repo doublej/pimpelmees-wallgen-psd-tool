@@ -93,7 +93,7 @@ function showPreviewDialog(di, ooc, semiTransparent, iccIssue, dpiTooHigh, hidde
                 iccMsg = "Niet-ondersteunde kleurmodus: " + iccIssue.profile;
                 iccHint = "Alleen Grayscale en CMYK worden ondersteund. "
                     + "Converteer via Bewerken \u2192 Omzetten naar profiel naar "
-                    + "Grayscale (Dot Gain 20%) of CMYK (FOGRA39) en probeer opnieuw.";
+                    + "Grayscale (Gray Gamma 1.0) of CMYK (FOGRA39) en probeer opnieuw.";
             } else {
                 iccMsg = "Verkeerd ICC-profiel: " + iccIssue.profile;
                 iccHint = "Verwacht profiel: " + iccIssue.expected + ". "
