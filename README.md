@@ -17,7 +17,7 @@ macOS app that checks PSD specs and converts to print-ready TIFF files via Adobe
 
 ## Install
 
-Download the latest `.zip` from [Releases](https://github.com/doublej/pimpelmees-wallgen-psd-tool/releases/latest), extract, and double-click the `.app` to run.
+Download the latest `.zip` from [Releases](https://github.com/doublej/wallgen-psd-preflight/releases/latest), extract, and double-click the `.app` to run.
 
 The app checks for updates on launch and offers one-click updating from within the UI.
 
