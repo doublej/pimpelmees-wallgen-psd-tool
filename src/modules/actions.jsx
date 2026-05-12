@@ -66,6 +66,109 @@ function addRectGuides(doc) {
     }
 }
 
+// Idempotent: no-op if already Grayscale. Assigns Gray Gamma 1.0 to satisfy
+// the tool's ICC contract (wallgen ignores the profile but the tool insists).
+function convertDuotoneToGrayscale(doc) {
+    if (doc.mode !== DocumentMode.DUOTONE) {
+        if (doc.mode === DocumentMode.GRAYSCALE) {
+            assignGrayGamma(doc);
+        }
+        return;
+    }
+    doc.changeMode(ChangeMode.GRAYSCALE);
+    assignGrayGamma(doc);
+}
+
+function assignGrayGamma(doc) {
+    try {
+        var desc = new ActionDescriptor();
+        var ref = new ActionReference();
+        ref.putEnumerated(charIDToTypeID("Dcmn"), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+        desc.putReference(charIDToTypeID("null"), ref);
+        desc.putString(stringIDToTypeID("profile"), NEW_DOC_GRAY_PROFILE);
+        executeAction(stringIDToTypeID("assignProfile"), desc, DialogModes.NO);
+    } catch (e) {}
+}
+
+// Resample whole document so detectedDiameterPx becomes targetDiameterMm.
+// Canvas resizes proportionally with the content.
+function resizeContentToDiameter(doc, detectedDiameterPx, targetDiameterMm) {
+    var dpi = doc.resolution;
+    var targetDiameterPx = targetDiameterMm / 25.4 * dpi;
+    var scale = targetDiameterPx / detectedDiameterPx;
+    var newW = doc.width.as("px") * scale;
+    var newH = doc.height.as("px") * scale;
+    doc.resizeImage(UnitValue(newW, "px"), UnitValue(newH, "px"), dpi, ResampleMethod.BICUBIC);
+}
+
+// After content is at catalog Ø, grow canvas to Ø + 2 × bleed (centred),
+// then fill new area white (mono contract).
+function expandCanvasWithBleed(doc, targetDiameterMm, bleedMm) {
+    var finalMm = targetDiameterMm + 2 * bleedMm;
+    var finalPx = mmToPx(finalMm);
+    var prevBg = app.backgroundColor;
+    var white = new SolidColor();
+    white.rgb.red = 255;
+    white.rgb.green = 255;
+    white.rgb.blue = 255;
+    app.backgroundColor = white;
+    try {
+        doc.resizeCanvas(UnitValue(finalPx, "px"), UnitValue(finalPx, "px"), AnchorPosition.MIDDLECENTER);
+    } catch (e) {}
+    app.backgroundColor = prevBg;
+    // Flatten so the new canvas area is opaque white (background fill colour
+    // only applies when there's a background layer; flatten guarantees it).
+    try { doc.flatten(); } catch (e) {}
+}
+
+// Strip suffixes like _color, _zwart, _bron, _DEF, _plat, _02 + extension.
+function inferAbbreviation(fileName) {
+    var base = fileName.replace(/\.[^.]+$/, "");
+    // Repeatedly strip known suffix tokens.
+    var changed = true;
+    while (changed) {
+        changed = false;
+        var stripped = base.replace(
+            /(_color|_colour|_zwart|_bron|_DEF|_def|_plat|_cirkel|_02|_01|_v2|_v1|[ ]*kopie[ \d]*)$/,
+            ""
+        );
+        if (stripped !== base) {
+            base = stripped;
+            changed = true;
+        }
+    }
+    return base;
+}
+
+// Per-target loop. Re-duplicates working doc per iteration so each export
+// starts from the same source state. opts: { workingDoc, shape (BC|MS),
+// abbreviation, outputDir, detection: {diameter_px}, bleedMm }.
+function exportTiffSet(diameterMmList, opts) {
+    var outDir = new Folder(opts.outputDir);
+    if (!outDir.exists) outDir.create();
+
+    var savedNames = [];
+    for (var i = 0; i < diameterMmList.length; i++) {
+        var targetMm = diameterMmList[i];
+        var iter = opts.workingDoc.duplicate(opts.abbreviation + "_iter_" + targetMm);
+        try {
+            resizeContentToDiameter(iter, opts.detection.diameter_px, targetMm);
+            expandCanvasWithBleed(iter, targetMm, opts.bleedMm);
+            assignGrayGamma(iter);
+
+            var fname = opts.abbreviation + "_" + opts.shape + "_" + padZero4(targetMm) + ".tif";
+            var outFile = new File(outDir.fsName + "/" + fname);
+            saveTiff(iter, outFile);
+            savedNames.push(fname);
+        } catch (e) {
+            iter.close(SaveOptions.DONOTSAVECHANGES);
+            throw e;
+        }
+        iter.close(SaveOptions.DONOTSAVECHANGES);
+    }
+    return savedNames;
+}
+
 function createNewDocument(widthPx, heightPx, isMono, docName) {
     var mode = isMono ? NewDocumentMode.GRAYSCALE : NewDocumentMode.CMYK;
     var profile = isMono ? NEW_DOC_GRAY_PROFILE : NEW_DOC_CMYK_PROFILE;
