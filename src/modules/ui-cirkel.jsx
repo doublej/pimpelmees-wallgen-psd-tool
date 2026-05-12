@@ -71,18 +71,38 @@ function showDemoMaskConfirmDialog(opts) {
     dlg.alignChildren = ["fill", "top"];
     dlg.margins = [28, 24, 28, 20];
     dlg.spacing = 6;
-    dlg.preferredSize = [DLG_W, -1];
+    dlg.preferredSize = [Math.max(DLG_W, 760), -1];
 
     var header = dlg.add("statictext", undefined, "Klopt de snijlijn?");
     header.graphics.font = ScriptUI.newFont("dialog", "Bold", 15);
 
     var hint = dlg.add("statictext", undefined,
-        "De grijze band op het canvas = afloop (" + opts.bleedMm + " mm) — "
-        + "wordt straks weggesneden. De zwarte ring binnen die band = de "
-        + "snijlijn. Zorg dat het ontwerp doorloopt tot achter de band.",
+        "Grijze band = afloop (" + opts.bleedMm + " mm) — wordt straks "
+        + "weggesneden. Zwarte ring = snijlijn. Het ontwerp moet doorlopen "
+        + "tot voorbij de band.",
         { multiline: true });
-    hint.preferredSize = [-1, 60];
+    hint.preferredSize = [-1, 40];
     hint.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
+
+    addSpacer(dlg, 6);
+
+    if (opts.previews && opts.previews.length > 0) {
+        var prevRow = dlg.add("group");
+        prevRow.orientation = "row";
+        prevRow.alignChildren = ["top", "top"];
+        prevRow.spacing = 10;
+        for (var pi = 0; pi < opts.previews.length; pi++) {
+            var p = opts.previews[pi];
+            var cell = prevRow.add("group");
+            cell.orientation = "column";
+            cell.alignChildren = ["center", "top"];
+            cell.spacing = 4;
+            try { cell.add("image", undefined, p.file); } catch (e) {}
+            var cap = cell.add("statictext", undefined, p.label);
+            cap.graphics.font = ScriptUI.newFont("dialog", "Regular", 10);
+        }
+        addSpacer(dlg, 8);
+    }
 
     addSpacer(dlg, 4);
 

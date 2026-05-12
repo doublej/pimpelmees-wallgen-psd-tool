@@ -102,6 +102,131 @@ function drawCircleRing(doc, cxPx, cyPx, rPx, layerName, ringWPx) {
     return layer;
 }
 
+// Rectangular marquee — used for the copy-merged crop preview.
+function selectRectangleAt(doc, leftPx, topPx, rightPx, bottomPx) {
+    var desc = new ActionDescriptor();
+    var ref = new ActionReference();
+    ref.putProperty(charIDToTypeID("Chnl"), charIDToTypeID("fsel"));
+    desc.putReference(charIDToTypeID("null"), ref);
+    var bounds = new ActionDescriptor();
+    bounds.putUnitDouble(charIDToTypeID("Top "), charIDToTypeID("#Pxl"), topPx);
+    bounds.putUnitDouble(charIDToTypeID("Left"), charIDToTypeID("#Pxl"), leftPx);
+    bounds.putUnitDouble(charIDToTypeID("Btom"), charIDToTypeID("#Pxl"), bottomPx);
+    bounds.putUnitDouble(charIDToTypeID("Rght"), charIDToTypeID("#Pxl"), rightPx);
+    desc.putObject(charIDToTypeID("T   "), charIDToTypeID("Rctn"), bounds);
+    executeAction(charIDToTypeID("setd"), desc, DialogModes.NO);
+}
+
+// Copy-merge a region from `doc` into a new small doc, downsize, save as
+// PNG. Used to embed live previews in the ScriptUI confirm dialog so the
+// user can verify cut-line + annulus alignment without zooming the locked
+// canvas.
+function exportRegionPng(doc, leftPx, topPx, rightPx, bottomPx, maxDimPx, pngPath) {
+    leftPx = Math.max(0, Math.round(leftPx));
+    topPx = Math.max(0, Math.round(topPx));
+    rightPx = Math.min(doc.width.as("px"), Math.round(rightPx));
+    bottomPx = Math.min(doc.height.as("px"), Math.round(bottomPx));
+    if (rightPx - leftPx < 2 || bottomPx - topPx < 2) return null;
+
+    selectRectangleAt(doc, leftPx, topPx, rightPx, bottomPx);
+    try {
+        executeAction(charIDToTypeID("CpyM"), undefined, DialogModes.NO);
+    } catch (e) {
+        try { doc.selection.deselect(); } catch (er) {}
+        return null;
+    }
+    try { doc.selection.deselect(); } catch (e) {}
+
+    var w = rightPx - leftPx;
+    var h = bottomPx - topPx;
+    var mode = (doc.mode === DocumentMode.GRAYSCALE) ? NewDocumentMode.GRAYSCALE : NewDocumentMode.RGB;
+
+    var newDoc;
+    try {
+        newDoc = app.documents.add(
+            UnitValue(w, "px"), UnitValue(h, "px"),
+            doc.resolution, "__cirkel_preview",
+            mode, DocumentFill.WHITE, 1, BitsPerChannelType.EIGHT
+        );
+    } catch (e) { return null; }
+
+    try { executeAction(charIDToTypeID("past"), undefined, DialogModes.NO); } catch (e) {}
+    try { newDoc.flatten(); } catch (e) {}
+
+    var scale = maxDimPx / Math.max(w, h);
+    if (scale < 1) {
+        try {
+            newDoc.resizeImage(
+                UnitValue(Math.round(w * scale), "px"),
+                UnitValue(Math.round(h * scale), "px"),
+                72, ResampleMethod.BICUBIC
+            );
+        } catch (e) {}
+    }
+
+    var pngFile = new File(pngPath);
+    var opts = new PNGSaveOptions();
+    opts.compression = 9;
+    opts.interlaced = false;
+    try { newDoc.saveAs(pngFile, opts, true); } catch (e) {}
+    newDoc.close(SaveOptions.DONOTSAVECHANGES);
+
+    app.activeDocument = doc;
+    return pngFile;
+}
+
+// Returns array of { file, label } for embedding in the confirm dialog.
+// Three previews: full circle thumbnail + two zoomed views on opposite
+// edges of the cut line so user can spot off-centre detection.
+function buildCirkelPreviews(doc, detection, cutRPx, tempDir) {
+    var folder = new Folder(tempDir);
+    if (!folder.exists) folder.create();
+    var previews = [];
+
+    var fullPng = exportRegionPng(
+        doc, 0, 0,
+        doc.width.as("px"), doc.height.as("px"),
+        300, tempDir + "/cirkel_full.png"
+    );
+    if (fullPng && fullPng.exists) previews.push({ file: fullPng, label: "Volledig" });
+
+    var bandW = detection.r_px - cutRPx;
+    var size = Math.max(bandW * 10, 800);
+    var midR = (detection.r_px + cutRPx) / 2;
+    var halfSize = size / 2;
+
+    // Right edge of cut line
+    var rightPng = exportRegionPng(
+        doc,
+        detection.cx_px + midR - halfSize,
+        detection.cy_px - halfSize,
+        detection.cx_px + midR + halfSize,
+        detection.cy_px + halfSize,
+        420, tempDir + "/cirkel_right.png"
+    );
+    if (rightPng && rightPng.exists) previews.push({ file: rightPng, label: "Rechts ingezoomd" });
+
+    // Top edge of cut line
+    var topPng = exportRegionPng(
+        doc,
+        detection.cx_px - halfSize,
+        detection.cy_px - midR - halfSize,
+        detection.cx_px + halfSize,
+        detection.cy_px - midR + halfSize,
+        420, tempDir + "/cirkel_top.png"
+    );
+    if (topPng && topPng.exists) previews.push({ file: topPng, label: "Boven ingezoomd" });
+
+    return previews;
+}
+
+function cleanupPreviews(previews) {
+    if (!previews) return;
+    for (var i = 0; i < previews.length; i++) {
+        try { previews[i].file.remove(); } catch (e) {}
+    }
+}
+
 function fillSelectionBlack() {
     try {
         var desc = new ActionDescriptor();

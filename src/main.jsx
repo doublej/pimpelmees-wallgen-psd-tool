@@ -141,6 +141,10 @@ function cirkelFlow() {
         var cutRing = drawCircleRing(working, detection.cx_px, detection.cy_px,
             cutRPx, "__cirkel_snijlijn");
 
+        // Render preview PNGs (whole circle + zoomed edges of the cut line)
+        // so the user can verify alignment without zooming the locked canvas.
+        var previews = buildCirkelPreviews(working, detection, cutRPx, "/tmp/pimpelmees-cirkel-preview");
+
         var abbreviation = inferAbbreviation(psdFile.name);
         var masterDir = psdFile.parent.fsName;
         var masterBase = psdFile.name.replace(/\.[^.]+$/, "");
@@ -152,8 +156,10 @@ function cirkelFlow() {
             abbreviation: abbreviation,
             diameterMmList: diameterList,
             outputDir: outputDir,
-            detection: detection
+            detection: detection,
+            previews: previews
         });
+        cleanupPreviews(previews);
         removeOverlay(cutRing);
         removeOverlay(annulus);
         if (!confirm) { working.close(SaveOptions.DONOTSAVECHANGES); return; }
