@@ -131,23 +131,7 @@ function cirkelFlow() {
             diameterPx = detection.diameter_px;
         }
 
-        // Step 1: visible ring at detected circle; user confirms position.
-        var detectRing = drawCircleRing(working, detection.cx_px, detection.cy_px,
-            detection.r_px, "__cirkel_detect");
-        var detectOk = showCircleConfirmDialog(detection);
-        removeOverlay(detectRing);
-        if (!detectOk) {
-            working.close(SaveOptions.DONOTSAVECHANGES);
-            return;
-        }
-
-        // Step 2: ask user to disable any circle-shaping masks manually.
-        if (!showDisableMasksDialog()) {
-            working.close(SaveOptions.DONOTSAVECHANGES);
-            return;
-        }
-
-        // Step 3: show demo cut-line + canvas-edge rings.
+        // Draw both rings: outer = detected (canvas edge), inner = cut line.
         // Cut radius = detected × catalog Ø / (catalog Ø + 2 × bleed).
         // Use the largest target — same proportion for all targets in the batch.
         var largestMm = diameterList[diameterList.length - 1];
@@ -167,7 +151,8 @@ function cirkelFlow() {
             bleedMm: bleedMm,
             abbreviation: abbreviation,
             diameterMmList: diameterList,
-            outputDir: outputDir
+            outputDir: outputDir,
+            detection: detection
         });
         removeOverlay(cutRing);
         removeOverlay(canvasRing);

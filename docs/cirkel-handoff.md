@@ -6,30 +6,38 @@ limitations as they land.
 
 ## Confirmed workflow
 
+ScriptUI modal dialogs in Photoshop are **application-modal** — they block
+all canvas/panel interaction, including pan/zoom and layer-mask toggling.
+The flow is therefore designed with **all manual prep done up-front** so the
+script never needs to pause for the user mid-detection.
+
 1. Welcome → **Verwerk cirkel…** button.
 2. Pick document (existing `pickDocument()` dialog).
-3. **Lay-out vraag**: "Is de lay-out hetzelfde voor alle maten?"
-   - **Hetzelfde** → export only the **largest** catalog Ø (BC 237.5 cm).
-     Wallgen scales down for smaller variants.
-   - **Verschillend** → ask shape (BC / MS), batch all sizes of that shape.
-     MS drops 300 mm; wallgen handles that scale from 100 cm.
-4. If the master is Duotone, show the Dutch notice and convert the working
-   duplicate to Grayscale + `Gray Gamma 1.0`. The master on disk is never touched.
-5. **Detect circle** on the layered composite (masks still active so the
-   detected outer edge matches the artist's intended cut Ø).
-6. **Confirm detected circle**: an elliptical marquee is drawn around the
-   detected circle on the canvas. User confirms position/size or cancels.
-7. **Disable circle masks**: dialog instructs the user to Shift-click off any
-   layer masks that crop the design to the circle. This exposes the
-   underlying artwork that becomes real bleed past the cut line.
-8. **Confirm demo cut-line**: a second marquee is drawn at the catalog Ø
-   radius (= detected radius × catalog Ø / (catalog Ø + 2 × bleed)). Dialog
-   shows abbreviation field + size list + output dir. User saves or cancels.
-9. **Export loop**: flatten merged layers (mask state baked in), then for
-   each catalog Ø: duplicate working doc, scale detected Ø → (catalog Ø +
-   2 × bleed), fit canvas to that square (centred, white fill if source
-   was smaller), assign Gray Gamma 1.0, save TIFF, close duplicate.
-10. Working duplicate closes without saving. Master PSD on disk is unmodified.
+3. **Lay-out vraag + mask-prep waarschuwing** (single dialog):
+   - "Is de lay-out hetzelfde voor alle maten?"
+     - **Hetzelfde** → export only the **largest** catalog Ø (BC 237.5 cm).
+       Wallgen scales down for smaller variants.
+     - **Verschillend** → ask shape (BC / MS), batch all sizes of that shape.
+       MS drops 300 mm; wallgen handles that scale from 100 cm.
+   - Warning panel: "Schakel cirkelmaskers nu uit (Shift-klik op de
+     mask-thumbnail) voordat je op Volgende klikt. Daarna kan ik niet meer
+     pauzeren."
+4. If "Verschillend": shape picker (BC / MS).
+5. If the master is Duotone, show the Dutch notice and convert the working
+   duplicate to Grayscale + `Gray Gamma 1.0`. The master on disk is never
+   touched.
+6. **Detect circle** on the layered composite (masks now disabled per
+   step 3, so detection sees the full unmasked artwork extent).
+7. **Confirm + save**: two black rings are drawn on temporary layers
+   (`__cirkel_canvas` = detected/canvas edge, `__cirkel_cut` = catalog cut
+   line, between them = bleed annulus). The dialog shows the abbreviation
+   field, size list, output dir. User saves or cancels. Rings are removed
+   after the dialog closes.
+8. **Export loop**: flatten merged layers, then for each catalog Ø:
+   duplicate working doc, scale detected Ø → (catalog Ø + 2 × bleed), fit
+   canvas to that square (centred, white fill if source was smaller),
+   assign Gray Gamma 1.0, save TIFF, close duplicate.
+9. Working duplicate closes without saving. Master PSD on disk is unmodified.
 
 ### Bleed semantics
 

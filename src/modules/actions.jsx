@@ -66,30 +66,33 @@ function addRectGuides(doc) {
     }
 }
 
-// Draws a black ring on a fresh transparent layer so it stays visible while
-// a ScriptUI dialog blocks the canvas (marching-ants marquees do not).
-// Returns the temp layer — caller removes it via removeOverlay() after the
-// confirmation dialog closes.
+// Draws a thick black ring on a fresh transparent layer so it stays visible
+// while a ScriptUI dialog blocks the canvas (marching-ants marquees do not).
+// Action-manager fill is used instead of SolidColor.fill — the latter silently
+// defaulted RGB white on grayscale docs and drew nothing visible.
 function drawCircleRing(doc, cxPx, cyPx, rPx, layerName) {
-    var ringW = Math.max(8, Math.round(rPx / 120));
+    var ringW = Math.max(16, Math.round(rPx / 80));
     var layer = doc.artLayers.add();
     layer.name = layerName;
     doc.activeLayer = layer;
 
-    var color = new SolidColor();
-    if (doc.mode === DocumentMode.GRAYSCALE) {
-        color.gray.gray = 0;
-    } else {
-        color.rgb.red = 255; color.rgb.green = 0; color.rgb.blue = 0;
-    }
-
     selectCircleAt(doc, cxPx, cyPx, rPx + ringW / 2);
-    try { doc.selection.fill(color); } catch (e) {}
+    fillSelectionBlack();
     selectCircleAt(doc, cxPx, cyPx, rPx - ringW / 2);
     try { doc.selection.clear(); } catch (e) {}
     try { doc.selection.deselect(); } catch (e) {}
     try { app.refresh(); } catch (e) {}
     return layer;
+}
+
+function fillSelectionBlack() {
+    try {
+        var desc = new ActionDescriptor();
+        desc.putEnumerated(charIDToTypeID("Usng"), charIDToTypeID("FlCn"), charIDToTypeID("Blck"));
+        desc.putUnitDouble(charIDToTypeID("Opct"), charIDToTypeID("#Prc"), 100);
+        desc.putEnumerated(charIDToTypeID("Md  "), charIDToTypeID("BlnM"), charIDToTypeID("Nrml"));
+        executeAction(charIDToTypeID("Fl  "), desc, DialogModes.NO);
+    } catch (e) {}
 }
 
 function removeOverlay(layer) {

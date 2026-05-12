@@ -3,13 +3,16 @@
 // First fork in the flow. "same" → only the largest catalog Ø is exported
 // (wallgen scales down for smaller variants). "different" → batch all sizes
 // of the picked shape.
+// Also surfaces the mask-prep warning — the script can't pause for the user
+// to interact with PS once detection runs, so any circle-cropping masks must
+// be disabled BEFORE this dialog is confirmed.
 function showLayoutSameDialog() {
     var dlg = new Window("dialog", SCRIPT_NAME);
     dlg.orientation = "column";
     dlg.alignChildren = ["fill", "top"];
     dlg.margins = [28, 24, 28, 20];
     dlg.spacing = 6;
-    dlg.preferredSize = [460, -1];
+    dlg.preferredSize = [500, -1];
 
     var header = dlg.add("statictext", undefined, "Is de lay-out hetzelfde voor alle maten?");
     header.graphics.font = ScriptUI.newFont("dialog", "Bold", 15);
@@ -33,7 +36,19 @@ function showLayoutSameDialog() {
         "Verschillend — kies vorm en exporteer alle maten");
     sameRb.value = true;
 
-    addSpacer(dlg, 8);
+    addSpacer(dlg, 10);
+
+    addWarning(dlg, "Schakel cirkelmaskers nu uit");
+    var prepTxt = dlg.add("statictext", undefined,
+        "Heeft het bronbestand laagmaskers die het ontwerp tot een cirkel "
+        + "bijsnijden? Schakel ze nu uit (Shift-klik op de mask-thumbnail) "
+        + "voordat je op Volgende klikt. Daarna kan ik niet meer pauzeren — "
+        + "Photoshop blijft geblokkeerd tot de TIFFs zijn opgeslagen.",
+        { multiline: true });
+    prepTxt.preferredSize = [-1, 80];
+    prepTxt.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
+
+    addSpacer(dlg, 10);
 
     var btns = dlg.add("group");
     btns.alignment = ["fill", "bottom"];
@@ -46,91 +61,10 @@ function showLayoutSameDialog() {
     return sameRb.value ? "same" : "different";
 }
 
-// Visual confirm: detected-circle marquee is already drawn on canvas.
-// Dialog is parked top-left so the canvas stays visible.
-function showCircleConfirmDialog(detection) {
-    var dlg = new Window("dialog", SCRIPT_NAME);
-    dlg.orientation = "column";
-    dlg.alignChildren = ["fill", "top"];
-    dlg.margins = [28, 24, 28, 20];
-    dlg.spacing = 6;
-    dlg.preferredSize = [440, -1];
-
-    var header = dlg.add("statictext", undefined, "Klopt de gevonden cirkel?");
-    header.graphics.font = ScriptUI.newFont("dialog", "Bold", 15);
-
-    var hint = dlg.add("statictext", undefined,
-        "Op het canvas zie je een zwarte ring rond de cirkel die ik heb "
-        + "gedetecteerd. Klopt de positie en grootte? Zo nee, annuleer en "
-        + "pas het bronbestand aan (zorg dat de cirkel het grootste "
-        + "niet-witte gebied is en ongeveer gecentreerd staat).",
-        { multiline: true });
-    hint.preferredSize = [-1, 80];
-    hint.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
-
-    addSpacer(dlg, 4);
-    var col = dlg.add("group");
-    col.orientation = "column";
-    col.alignChildren = ["fill", "top"];
-    col.spacing = 4;
-    addCompactRow(col, "Gemeten Ø",
-        (detection.diameter_mm / 10).toFixed(1) + " cm "
-        + "(" + Math.round(detection.diameter_px) + " px)");
-    addCompactRow(col, "Midden",
-        Math.round(detection.cx_px) + " × " + Math.round(detection.cy_px) + " px");
-
-    addSpacer(dlg, 10);
-
-    var btns = dlg.add("group");
-    btns.alignment = ["fill", "bottom"];
-    btns.add("button", undefined, "Annuleren", { name: "cancel" });
-    var spacer = btns.add("group");
-    spacer.alignment = ["fill", "center"];
-    btns.add("button", undefined, "Ja, klopt", { name: "ok" });
-
-    try { dlg.location = [40, 80]; } catch (e) {}
-    return dlg.show() === 1;
-}
-
-// Instruction step. User must manually toggle off any layer masks that
-// constrain artwork to the circle so the underlying design extends past
-// the cut line and produces real bleed content.
-function showDisableMasksDialog() {
-    var dlg = new Window("dialog", SCRIPT_NAME);
-    dlg.orientation = "column";
-    dlg.alignChildren = ["fill", "top"];
-    dlg.margins = [28, 24, 28, 20];
-    dlg.spacing = 6;
-    dlg.preferredSize = [460, -1];
-
-    var header = dlg.add("statictext", undefined, "Schakel cirkelmaskers uit");
-    header.graphics.font = ScriptUI.newFont("dialog", "Bold", 15);
-
-    var hint = dlg.add("statictext", undefined,
-        "Zet nu de laagmaskers uit die het ontwerp tot een cirkel bijsnijden "
-        + "(Shift-klik op de mask-thumbnail in het Lagen-paneel). Zo komt "
-        + "het onderliggende ontwerp tevoorschijn dat ik gebruik als afloop "
-        + "rond de snijlijn. Klik daarna op Doorgaan.",
-        { multiline: true });
-    hint.preferredSize = [-1, 100];
-    hint.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
-
-    addSpacer(dlg, 10);
-
-    var btns = dlg.add("group");
-    btns.alignment = ["fill", "bottom"];
-    btns.add("button", undefined, "Annuleren", { name: "cancel" });
-    var spacer = btns.add("group");
-    spacer.alignment = ["fill", "center"];
-    btns.add("button", undefined, "Doorgaan", { name: "ok" });
-
-    try { dlg.location = [40, 80]; } catch (e) {}
-    return dlg.show() === 1;
-}
-
-// Final confirm before save. Demo cut-line marquee already drawn on canvas
-// at the catalog Ø radius (inside the detected outer circle). Carries the
-// abbreviation field — last chance to edit before TIFFs land.
+// Final (and only) confirm before save. Two rings are drawn on canvas:
+// outer = detected/canvas edge, inner = catalog cut line. The annulus
+// between is the bleed zone. Carries the abbreviation field — last chance
+// to edit before TIFFs land.
 function showDemoMaskConfirmDialog(opts) {
     var dlg = new Window("dialog", SCRIPT_NAME);
     dlg.orientation = "column";
@@ -157,6 +91,10 @@ function showDemoMaskConfirmDialog(opts) {
     col.alignChildren = ["fill", "top"];
     col.spacing = 4;
     addCompactRow(col, "Vorm", opts.shape === "BC" ? "Behangcirkel" : "Muursticker");
+    if (opts.detection && opts.detection.diameter_mm) {
+        addCompactRow(col, "Gevonden cirkel",
+            (opts.detection.diameter_mm / 10).toFixed(1) + " cm Ø");
+    }
     var sizesTxt = "";
     for (var i = 0; i < opts.diameterMmList.length; i++) {
         var mm = opts.diameterMmList[i];
