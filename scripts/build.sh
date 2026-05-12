@@ -14,8 +14,19 @@ echo "Building v${VERSION} (${BUILD})"
 rm -rf build
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
+# Generate config-generated.jsx from wallgen's authoritative catalog.
+CATALOG="../../wallgen/var/catalog/dimensions.json"
+if [ ! -f "$CATALOG" ]; then
+    echo "ERROR: catalog not found: $CATALOG" >&2
+    echo "       expected wallgen/var/catalog/dimensions.json relative to repo root" >&2
+    exit 1
+fi
+python3 scripts/gen-config.py "$CATALOG" src/modules/config-generated.jsx
+echo "Generated src/modules/config-generated.jsx from $CATALOG"
+
 # Concat modules into single ExtendScript (dependency order matters)
 MODULES=(
+    src/modules/config-generated.jsx
     src/modules/config.jsx
     src/modules/utils.jsx
     src/modules/io.jsx
@@ -26,6 +37,7 @@ MODULES=(
     src/modules/ui-picker.jsx
     src/modules/ui-preview.jsx
     src/modules/ui-newdoc.jsx
+    src/modules/ui-cirkel.jsx
     src/main.jsx
 )
 
