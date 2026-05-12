@@ -260,6 +260,12 @@ function selectCircleAt(doc, cxPx, cyPx, rPx) {
 
 // Idempotent: no-op if already Grayscale. Assigns Gray Gamma 1.0 to satisfy
 // the tool's ICC contract (wallgen ignores the profile but the tool insists).
+//
+// IMPORTANT: flatten while still Duotone so the composite (blends, layer
+// effects, adjustment layers) is baked correctly before mode conversion.
+// Converting each Duotone layer independently drifts the composite math —
+// per-layer changeMode produces visibly different contrast than the original
+// flat preview.
 function convertDuotoneToGrayscale(doc) {
     if (doc.mode !== DocumentMode.DUOTONE) {
         if (doc.mode === DocumentMode.GRAYSCALE) {
@@ -267,6 +273,8 @@ function convertDuotoneToGrayscale(doc) {
         }
         return;
     }
+    try { unlockBackground(doc); } catch (e) {}
+    try { doc.flatten(); } catch (e) {}
     doc.changeMode(ChangeMode.GRAYSCALE);
     assignGrayGamma(doc);
 }
