@@ -66,8 +66,39 @@ function addRectGuides(doc) {
     }
 }
 
-// Elliptical marquee selection in px. Used as a visual overlay during
-// confirmation dialogs — marching ants stay visible while a modal is open.
+// Draws a black ring on a fresh transparent layer so it stays visible while
+// a ScriptUI dialog blocks the canvas (marching-ants marquees do not).
+// Returns the temp layer — caller removes it via removeOverlay() after the
+// confirmation dialog closes.
+function drawCircleRing(doc, cxPx, cyPx, rPx, layerName) {
+    var ringW = Math.max(8, Math.round(rPx / 120));
+    var layer = doc.artLayers.add();
+    layer.name = layerName;
+    doc.activeLayer = layer;
+
+    var color = new SolidColor();
+    if (doc.mode === DocumentMode.GRAYSCALE) {
+        color.gray.gray = 0;
+    } else {
+        color.rgb.red = 255; color.rgb.green = 0; color.rgb.blue = 0;
+    }
+
+    selectCircleAt(doc, cxPx, cyPx, rPx + ringW / 2);
+    try { doc.selection.fill(color); } catch (e) {}
+    selectCircleAt(doc, cxPx, cyPx, rPx - ringW / 2);
+    try { doc.selection.clear(); } catch (e) {}
+    try { doc.selection.deselect(); } catch (e) {}
+    try { app.refresh(); } catch (e) {}
+    return layer;
+}
+
+function removeOverlay(layer) {
+    if (!layer) return;
+    try { layer.remove(); } catch (e) {}
+    try { app.refresh(); } catch (e) {}
+}
+
+// Elliptical marquee selection in px. Kept for internal use by drawCircleRing.
 function selectCircleAt(doc, cxPx, cyPx, rPx) {
     var desc = new ActionDescriptor();
     var ref = new ActionReference();

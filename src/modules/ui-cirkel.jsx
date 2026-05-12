@@ -60,7 +60,7 @@ function showCircleConfirmDialog(detection) {
     header.graphics.font = ScriptUI.newFont("dialog", "Bold", 15);
 
     var hint = dlg.add("statictext", undefined,
-        "Op het canvas zie je een ovaal-selectie rond de cirkel die ik heb "
+        "Op het canvas zie je een zwarte ring rond de cirkel die ik heb "
         + "gedetecteerd. Klopt de positie en grootte? Zo nee, annuleer en "
         + "pas het bronbestand aan (zorg dat de cirkel het grootste "
         + "niet-witte gebied is en ongeveer gecentreerd staat).",
@@ -143,9 +143,9 @@ function showDemoMaskConfirmDialog(opts) {
     header.graphics.font = ScriptUI.newFont("dialog", "Bold", 15);
 
     var hint = dlg.add("statictext", undefined,
-        "De ovaal-selectie op het canvas is de snijlijn — daar wordt straks "
-        + "het wallpaper gesneden. Buiten die lijn zit de afloop (" + opts.bleedMm
-        + " mm) die het ontwerp moet blijven invullen.",
+        "Twee zwarte ringen: de buitenste = canvasrand, de binnenste = snijlijn "
+        + "(daar wordt het wallpaper gesneden). Tussen die ringen zit de afloop ("
+        + opts.bleedMm + " mm) die het ontwerp moet blijven invullen.",
         { multiline: true });
     hint.preferredSize = [-1, 60];
     hint.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);

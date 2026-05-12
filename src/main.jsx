@@ -131,27 +131,31 @@ function cirkelFlow() {
             diameterPx = detection.diameter_px;
         }
 
-        // Step 1: show detected-circle marquee, ask user to confirm.
-        selectCircleAt(working, detection.cx_px, detection.cy_px, detection.r_px);
-        if (!showCircleConfirmDialog(detection)) {
-            try { working.selection.deselect(); } catch (e) {}
+        // Step 1: visible ring at detected circle; user confirms position.
+        var detectRing = drawCircleRing(working, detection.cx_px, detection.cy_px,
+            detection.r_px, "__cirkel_detect");
+        var detectOk = showCircleConfirmDialog(detection);
+        removeOverlay(detectRing);
+        if (!detectOk) {
             working.close(SaveOptions.DONOTSAVECHANGES);
             return;
         }
 
         // Step 2: ask user to disable any circle-shaping masks manually.
-        try { working.selection.deselect(); } catch (e) {}
         if (!showDisableMasksDialog()) {
             working.close(SaveOptions.DONOTSAVECHANGES);
             return;
         }
 
-        // Step 3: show demo cut-line marquee at the catalog Ø radius
-        // (= detected radius × catalog Ø / (catalog Ø + 2 × bleed)).
+        // Step 3: show demo cut-line + canvas-edge rings.
+        // Cut radius = detected × catalog Ø / (catalog Ø + 2 × bleed).
         // Use the largest target — same proportion for all targets in the batch.
         var largestMm = diameterList[diameterList.length - 1];
         var cutRPx = detection.r_px * largestMm / (largestMm + 2 * bleedMm);
-        selectCircleAt(working, detection.cx_px, detection.cy_px, cutRPx);
+        var canvasRing = drawCircleRing(working, detection.cx_px, detection.cy_px,
+            detection.r_px, "__cirkel_canvas");
+        var cutRing = drawCircleRing(working, detection.cx_px, detection.cy_px,
+            cutRPx, "__cirkel_cut");
 
         var abbreviation = inferAbbreviation(psdFile.name);
         var masterDir = psdFile.parent.fsName;
@@ -165,7 +169,8 @@ function cirkelFlow() {
             diameterMmList: diameterList,
             outputDir: outputDir
         });
-        try { working.selection.deselect(); } catch (e) {}
+        removeOverlay(cutRing);
+        removeOverlay(canvasRing);
         if (!confirm) { working.close(SaveOptions.DONOTSAVECHANGES); return; }
 
         // Now flatten — masks (whatever state the user left them in) bake in.
