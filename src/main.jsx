@@ -72,8 +72,21 @@ function cirkelFlow() {
     var originalDoc = picked.doc;
     var psdFile = picked.file;
 
-    var shape = showShapePickerDialog();
-    if (!shape) return;
+    var layoutChoice = showLayoutSameDialog();
+    if (!layoutChoice) return;
+
+    var shape;
+    var diameterList;
+    if (layoutChoice === "same") {
+        // Single largest output. Wallgen scales down for smaller variants.
+        shape = "BC";
+        diameterList = [BC_DIAMETERS_MM[BC_DIAMETERS_MM.length - 1]];
+    } else {
+        shape = showShapePickerDialog();
+        if (!shape) return;
+        diameterList = batchDiameterList(shape);
+    }
+    var bleedMm = (shape === "MS") ? BLEED_MS : BLEED_BC;
 
     var working = originalDoc.duplicate(
         psdFile.name.replace(/\.[^.]+$/, "") + " (cirkel werkkopie)"
@@ -92,59 +105,72 @@ function cirkelFlow() {
             working.close(SaveOptions.DONOTSAVECHANGES);
             return;
         } else {
-            convertDuotoneToGrayscale(working); // ensures Gray Gamma 1.0 assigned
+            convertDuotoneToGrayscale(working);
         }
 
         unlockBackground(working);
-        if (working.layers.length > 1) working.mergeVisibleLayers();
+        app.activeDocument = working;
 
+        // Detection runs on the layered composite — masks still active so
+        // the detected circle equals the artist's intended cut Ø.
         var detection = detectCircle(working);
-        var detectedMm = detection ? detection.diameter_mm : null;
-        var diameterPx = detection ? detection.diameter_px : null;
-
-        var bleedMm = (shape === "MS") ? BLEED_MS : BLEED_BC;
-        var diameterList = (shape === "MS") ? MS_DIAMETERS_MM : BC_DIAMETERS_MM;
-        var chosenMm;
-
+        var diameterPx;
         if (!detection) {
-            chosenMm = promptManualDiameter(shape);
-            if (!chosenMm) { working.close(SaveOptions.DONOTSAVECHANGES); return; }
-            // No detection → assume current canvas is sized to chosen Ø.
+            var fallbackMm = promptManualDiameter(shape);
+            if (!fallbackMm) { working.close(SaveOptions.DONOTSAVECHANGES); return; }
             diameterPx = Math.min(working.width.as("px"), working.height.as("px"));
+            detection = {
+                cx_px: working.width.as("px") / 2,
+                cy_px: working.height.as("px") / 2,
+                r_px: diameterPx / 2,
+                diameter_px: diameterPx,
+                diameter_mm: fallbackMm,
+                source: "manual"
+            };
         } else {
-            var match = nearestCatalogDiameter(detectedMm, shape);
-            if (match.ambiguous) {
-                var candidates = [match.catalog_mm];
-                for (var ai = 0; ai < match.alternatives_mm.length; ai++) {
-                    candidates.push(match.alternatives_mm[ai]);
-                }
-                candidates.sort(function (a, b) { return a - b; });
-                chosenMm = showAmbiguousPickerDialog(detectedMm, candidates);
-                if (!chosenMm) { working.close(SaveOptions.DONOTSAVECHANGES); return; }
-            } else {
-                chosenMm = match.catalog_mm;
-            }
+            diameterPx = detection.diameter_px;
         }
+
+        // Step 1: show detected-circle marquee, ask user to confirm.
+        selectCircleAt(working, detection.cx_px, detection.cy_px, detection.r_px);
+        if (!showCircleConfirmDialog(detection)) {
+            try { working.selection.deselect(); } catch (e) {}
+            working.close(SaveOptions.DONOTSAVECHANGES);
+            return;
+        }
+
+        // Step 2: ask user to disable any circle-shaping masks manually.
+        try { working.selection.deselect(); } catch (e) {}
+        if (!showDisableMasksDialog()) {
+            working.close(SaveOptions.DONOTSAVECHANGES);
+            return;
+        }
+
+        // Step 3: show demo cut-line marquee at the catalog Ø radius
+        // (= detected radius × catalog Ø / (catalog Ø + 2 × bleed)).
+        // Use the largest target — same proportion for all targets in the batch.
+        var largestMm = diameterList[diameterList.length - 1];
+        var cutRPx = detection.r_px * largestMm / (largestMm + 2 * bleedMm);
+        selectCircleAt(working, detection.cx_px, detection.cy_px, cutRPx);
 
         var abbreviation = inferAbbreviation(psdFile.name);
         var masterDir = psdFile.parent.fsName;
         var masterBase = psdFile.name.replace(/\.[^.]+$/, "");
         var outputDir = masterDir + "/" + masterBase + "_export";
 
-        var confirm = showCirkelConfirmDialog({
-            fileName: psdFile.name,
+        var confirm = showDemoMaskConfirmDialog({
             shape: shape,
-            detectedMm: detectedMm != null ? detectedMm : chosenMm,
             bleedMm: bleedMm,
             abbreviation: abbreviation,
             diameterMmList: diameterList,
             outputDir: outputDir
         });
+        try { working.selection.deselect(); } catch (e) {}
         if (!confirm) { working.close(SaveOptions.DONOTSAVECHANGES); return; }
 
-        // Each export iter duplicates `working` and scales from the original
-        // detected Ø in px. Bleed lives INSIDE the detected circle, so the
-        // resize target per iter is (catalog Ø + 2 × bleed), not catalog Ø.
+        // Now flatten — masks (whatever state the user left them in) bake in.
+        if (working.layers.length > 1) working.mergeVisibleLayers();
+
         var saved = exportTiffSet(diameterList, {
             workingDoc: working,
             shape: shape,
@@ -160,4 +186,16 @@ function cirkelFlow() {
     }
 
     try { working.close(SaveOptions.DONOTSAVECHANGES); } catch (e) {}
+}
+
+// MS drops 300 mm (sticker too small to need a dedicated input — wallgen
+// scales from 1000 mm if needed). BC exports all four catalog diameters.
+function batchDiameterList(shape) {
+    var src = (shape === "MS") ? MS_DIAMETERS_MM : BC_DIAMETERS_MM;
+    var out = [];
+    for (var i = 0; i < src.length; i++) {
+        if (shape === "MS" && src[i] === 300) continue;
+        out.push(src[i]);
+    }
+    return out;
 }

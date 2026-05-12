@@ -1,5 +1,203 @@
 // ui-cirkel.jsx — Cirkel-flow dialogs
 
+// First fork in the flow. "same" → only the largest catalog Ø is exported
+// (wallgen scales down for smaller variants). "different" → batch all sizes
+// of the picked shape.
+function showLayoutSameDialog() {
+    var dlg = new Window("dialog", SCRIPT_NAME);
+    dlg.orientation = "column";
+    dlg.alignChildren = ["fill", "top"];
+    dlg.margins = [28, 24, 28, 20];
+    dlg.spacing = 6;
+    dlg.preferredSize = [460, -1];
+
+    var header = dlg.add("statictext", undefined, "Is de lay-out hetzelfde voor alle maten?");
+    header.graphics.font = ScriptUI.newFont("dialog", "Bold", 15);
+
+    var hint = dlg.add("statictext", undefined,
+        "Wallgen kan automatisch schalen als het ontwerp identiek is voor alle maten. "
+        + "Verschilt het ontwerp per maat (bv. fijnere details op kleine stickers), "
+        + "kies dan 'Verschillend'.", { multiline: true });
+    hint.preferredSize = [-1, 56];
+    hint.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
+
+    addSpacer(dlg, 6);
+
+    var grp = dlg.add("group");
+    grp.orientation = "column";
+    grp.alignChildren = ["left", "top"];
+    grp.spacing = 4;
+    var sameRb = grp.add("radiobutton", undefined,
+        "Hetzelfde — exporteer alleen de grootste cirkel (BC 237,5 cm)");
+    var diffRb = grp.add("radiobutton", undefined,
+        "Verschillend — kies vorm en exporteer alle maten");
+    sameRb.value = true;
+
+    addSpacer(dlg, 8);
+
+    var btns = dlg.add("group");
+    btns.alignment = ["fill", "bottom"];
+    btns.add("button", undefined, "Annuleren", { name: "cancel" });
+    var spacer = btns.add("group");
+    spacer.alignment = ["fill", "center"];
+    btns.add("button", undefined, "Volgende", { name: "ok" });
+
+    if (dlg.show() !== 1) return null;
+    return sameRb.value ? "same" : "different";
+}
+
+// Visual confirm: detected-circle marquee is already drawn on canvas.
+// Dialog is parked top-left so the canvas stays visible.
+function showCircleConfirmDialog(detection) {
+    var dlg = new Window("dialog", SCRIPT_NAME);
+    dlg.orientation = "column";
+    dlg.alignChildren = ["fill", "top"];
+    dlg.margins = [28, 24, 28, 20];
+    dlg.spacing = 6;
+    dlg.preferredSize = [440, -1];
+
+    var header = dlg.add("statictext", undefined, "Klopt de gevonden cirkel?");
+    header.graphics.font = ScriptUI.newFont("dialog", "Bold", 15);
+
+    var hint = dlg.add("statictext", undefined,
+        "Op het canvas zie je een ovaal-selectie rond de cirkel die ik heb "
+        + "gedetecteerd. Klopt de positie en grootte? Zo nee, annuleer en "
+        + "pas het bronbestand aan (zorg dat de cirkel het grootste "
+        + "niet-witte gebied is en ongeveer gecentreerd staat).",
+        { multiline: true });
+    hint.preferredSize = [-1, 80];
+    hint.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
+
+    addSpacer(dlg, 4);
+    var col = dlg.add("group");
+    col.orientation = "column";
+    col.alignChildren = ["fill", "top"];
+    col.spacing = 4;
+    addCompactRow(col, "Gemeten Ø",
+        (detection.diameter_mm / 10).toFixed(1) + " cm "
+        + "(" + Math.round(detection.diameter_px) + " px)");
+    addCompactRow(col, "Midden",
+        Math.round(detection.cx_px) + " × " + Math.round(detection.cy_px) + " px");
+
+    addSpacer(dlg, 10);
+
+    var btns = dlg.add("group");
+    btns.alignment = ["fill", "bottom"];
+    btns.add("button", undefined, "Annuleren", { name: "cancel" });
+    var spacer = btns.add("group");
+    spacer.alignment = ["fill", "center"];
+    btns.add("button", undefined, "Ja, klopt", { name: "ok" });
+
+    try { dlg.location = [40, 80]; } catch (e) {}
+    return dlg.show() === 1;
+}
+
+// Instruction step. User must manually toggle off any layer masks that
+// constrain artwork to the circle so the underlying design extends past
+// the cut line and produces real bleed content.
+function showDisableMasksDialog() {
+    var dlg = new Window("dialog", SCRIPT_NAME);
+    dlg.orientation = "column";
+    dlg.alignChildren = ["fill", "top"];
+    dlg.margins = [28, 24, 28, 20];
+    dlg.spacing = 6;
+    dlg.preferredSize = [460, -1];
+
+    var header = dlg.add("statictext", undefined, "Schakel cirkelmaskers uit");
+    header.graphics.font = ScriptUI.newFont("dialog", "Bold", 15);
+
+    var hint = dlg.add("statictext", undefined,
+        "Zet nu de laagmaskers uit die het ontwerp tot een cirkel bijsnijden "
+        + "(Shift-klik op de mask-thumbnail in het Lagen-paneel). Zo komt "
+        + "het onderliggende ontwerp tevoorschijn dat ik gebruik als afloop "
+        + "rond de snijlijn. Klik daarna op Doorgaan.",
+        { multiline: true });
+    hint.preferredSize = [-1, 100];
+    hint.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
+
+    addSpacer(dlg, 10);
+
+    var btns = dlg.add("group");
+    btns.alignment = ["fill", "bottom"];
+    btns.add("button", undefined, "Annuleren", { name: "cancel" });
+    var spacer = btns.add("group");
+    spacer.alignment = ["fill", "center"];
+    btns.add("button", undefined, "Doorgaan", { name: "ok" });
+
+    try { dlg.location = [40, 80]; } catch (e) {}
+    return dlg.show() === 1;
+}
+
+// Final confirm before save. Demo cut-line marquee already drawn on canvas
+// at the catalog Ø radius (inside the detected outer circle). Carries the
+// abbreviation field — last chance to edit before TIFFs land.
+function showDemoMaskConfirmDialog(opts) {
+    var dlg = new Window("dialog", SCRIPT_NAME);
+    dlg.orientation = "column";
+    dlg.alignChildren = ["fill", "top"];
+    dlg.margins = [28, 24, 28, 20];
+    dlg.spacing = 6;
+    dlg.preferredSize = [DLG_W, -1];
+
+    var header = dlg.add("statictext", undefined, "Klopt de snijlijn?");
+    header.graphics.font = ScriptUI.newFont("dialog", "Bold", 15);
+
+    var hint = dlg.add("statictext", undefined,
+        "De ovaal-selectie op het canvas is de snijlijn — daar wordt straks "
+        + "het wallpaper gesneden. Buiten die lijn zit de afloop (" + opts.bleedMm
+        + " mm) die het ontwerp moet blijven invullen.",
+        { multiline: true });
+    hint.preferredSize = [-1, 60];
+    hint.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
+
+    addSpacer(dlg, 4);
+
+    var col = dlg.add("group");
+    col.orientation = "column";
+    col.alignChildren = ["fill", "top"];
+    col.spacing = 4;
+    addCompactRow(col, "Vorm", opts.shape === "BC" ? "Behangcirkel" : "Muursticker");
+    var sizesTxt = "";
+    for (var i = 0; i < opts.diameterMmList.length; i++) {
+        var mm = opts.diameterMmList[i];
+        if (i > 0) sizesTxt += ", ";
+        sizesTxt += (mm / 10).toFixed(1) + " cm";
+    }
+    addCompactRow(col, "Te exporteren", sizesTxt);
+
+    addSpacer(dlg, 6);
+
+    var abbrRow = dlg.add("group");
+    abbrRow.alignment = ["fill", "top"];
+    abbrRow.spacing = 10;
+    var abbrLbl = abbrRow.add("statictext", undefined, "Afkorting");
+    abbrLbl.preferredSize = [110, -1];
+    abbrLbl.graphics.font = ScriptUI.newFont("dialog", "Bold", 11);
+    var abbrInput = abbrRow.add("edittext", undefined, opts.abbreviation);
+    abbrInput.alignment = ["fill", "center"];
+    abbrInput.preferredSize = [-1, 24];
+
+    addSpacer(dlg, 4);
+    addCompactRow(dlg, "Uitvoermap", opts.outputDir);
+
+    addSpacer(dlg, 12);
+
+    var btns = dlg.add("group");
+    btns.alignment = ["fill", "bottom"];
+    btns.add("button", undefined, "Annuleren", { name: "cancel" });
+    var spacer = btns.add("group");
+    spacer.alignment = ["fill", "center"];
+    var goBtn = btns.add("button", undefined, "Opslaan", { name: "ok" });
+    goBtn.preferredSize = [160, 32];
+
+    try { dlg.location = [40, 80]; } catch (e) {}
+    if (dlg.show() !== 1) return null;
+
+    var abbr = abbrInput.text.replace(/^\s+|\s+$/g, "");
+    if (!abbr) abbr = opts.abbreviation;
+    return { abbreviation: abbr };
+}
+
 function showShapePickerDialog() {
     var dlg = new Window("dialog", SCRIPT_NAME);
     dlg.orientation = "column";
@@ -127,77 +325,6 @@ function showAmbiguousPickerDialog(detectedMm, candidatesMm) {
     return candidatesMm[0];
 }
 
-function showCirkelConfirmDialog(opts) {
-    var dlg = new Window("dialog", SCRIPT_NAME);
-    dlg.orientation = "column";
-    dlg.alignChildren = ["fill", "top"];
-    dlg.margins = [28, 24, 28, 20];
-    dlg.spacing = 6;
-    dlg.preferredSize = [DLG_W, -1];
-
-    var header = dlg.add("statictext", undefined, "Klaar om te exporteren");
-    header.graphics.font = ScriptUI.newFont("dialog", "Bold", 15);
-
-    addSpacer(dlg, 4);
-
-    var col = dlg.add("group");
-    col.orientation = "column";
-    col.alignChildren = ["fill", "top"];
-    col.spacing = 4;
-    addCompactRow(col, "Bestand", opts.fileName);
-    addCompactRow(col, "Vorm", opts.shape === "BC" ? "Behangcirkel" : "Muursticker");
-    addCompactRow(col, "Gemeten Ø", (opts.detectedMm / 10).toFixed(1) + " cm");
-    addCompactRow(col, "Afloop", opts.bleedMm + " mm rondom");
-
-    addSpacer(dlg, 6);
-
-    var abbrRow = dlg.add("group");
-    abbrRow.alignment = ["fill", "top"];
-    abbrRow.spacing = 10;
-    var abbrLbl = abbrRow.add("statictext", undefined, "Afkorting");
-    abbrLbl.preferredSize = [110, -1];
-    abbrLbl.graphics.font = ScriptUI.newFont("dialog", "Bold", 11);
-    var abbrInput = abbrRow.add("edittext", undefined, opts.abbreviation);
-    abbrInput.alignment = ["fill", "center"];
-    abbrInput.preferredSize = [-1, 24];
-
-    addSpacer(dlg, 6);
-
-    var sizesHdr = dlg.add("statictext", undefined, "Te exporteren formaten");
-    sizesHdr.graphics.font = ScriptUI.newFont("dialog", "Bold", 12);
-
-    var listTxt = "";
-    for (var i = 0; i < opts.diameterMmList.length; i++) {
-        var mm = opts.diameterMmList[i];
-        var finalMm = mm + 2 * opts.bleedMm;
-        listTxt += "• " + (mm / 10).toFixed(1) + " cm → "
-            + (finalMm / 10).toFixed(1) + " × "
-            + (finalMm / 10).toFixed(1) + " cm canvas\n";
-    }
-    var sizesTxt = dlg.add("statictext", undefined, listTxt, { multiline: true });
-    sizesTxt.preferredSize = [-1, 80];
-    sizesTxt.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
-
-    addSpacer(dlg, 4);
-    addCompactRow(dlg, "Uitvoermap", opts.outputDir);
-
-    addSpacer(dlg, 12);
-
-    var btns = dlg.add("group");
-    btns.alignment = ["fill", "bottom"];
-    btns.add("button", undefined, "Annuleren", { name: "cancel" });
-    var spacer = btns.add("group");
-    spacer.alignment = ["fill", "center"];
-    var goBtn = btns.add("button", undefined, "Exporteer alle", { name: "ok" });
-    goBtn.preferredSize = [160, 32];
-
-    if (dlg.show() !== 1) return null;
-
-    var abbr = abbrInput.text.replace(/^\s+|\s+$/g, "");
-    if (!abbr) abbr = opts.abbreviation;
-    return { abbreviation: abbr };
-}
-
 function promptManualDiameter(shape) {
     var dlg = new Window("dialog", SCRIPT_NAME);
     dlg.orientation = "column";
@@ -217,7 +344,7 @@ function promptManualDiameter(shape) {
 
     addSpacer(dlg, 6);
 
-    var list = (shape === "MS") ? MS_DIAMETERS_MM : BC_DIAMETERS_MM;
+    var list = batchDiameterList(shape);
     var grp = dlg.add("group");
     grp.orientation = "column";
     grp.alignChildren = ["left", "top"];

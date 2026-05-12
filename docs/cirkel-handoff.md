@@ -8,23 +8,28 @@ limitations as they land.
 
 1. Welcome → **Verwerk cirkel…** button.
 2. Pick document (existing `pickDocument()` dialog).
-3. Pick shape: **Behangcirkel (BC, 10 mm bleed)** or **Muursticker (MS, 3 mm bleed)**.
+3. **Lay-out vraag**: "Is de lay-out hetzelfde voor alle maten?"
+   - **Hetzelfde** → export only the **largest** catalog Ø (BC 237.5 cm).
+     Wallgen scales down for smaller variants.
+   - **Verschillend** → ask shape (BC / MS), batch all sizes of that shape.
+     MS drops 300 mm; wallgen handles that scale from 100 cm.
 4. If the master is Duotone, show the Dutch notice and convert the working
    duplicate to Grayscale + `Gray Gamma 1.0`. The master on disk is never touched.
-5. Flatten + detect circle (largest non-white region).
-6. Match measured Ø against the catalog set for the chosen shape.
-   - Single match → preselect.
-   - Multiple within 15% → Dutch picker ("Gemeten: 152 cm cirkel. Bedoel je
-     142,5 cm of 190 cm?").
-   - No detection → manual size picker as fallback.
-7. Confirm dialog: abbreviation (editable, prefilled from filename), size list,
-   final canvas sizes, output dir preview.
-8. Export loop: for each catalog Ø, duplicate working doc, scale detected
-   circle so its Ø equals **(catalog Ø + 2 × bleed)** — i.e. the detected
-   circle becomes the full canvas. Fit canvas to that final size square
-   (centred, white fill if source was smaller). Assign Gray Gamma 1.0. Save
-   TIFF. Close duplicate.
-9. Working duplicate closes without saving. Master PSD on disk is unmodified.
+5. **Detect circle** on the layered composite (masks still active so the
+   detected outer edge matches the artist's intended cut Ø).
+6. **Confirm detected circle**: an elliptical marquee is drawn around the
+   detected circle on the canvas. User confirms position/size or cancels.
+7. **Disable circle masks**: dialog instructs the user to Shift-click off any
+   layer masks that crop the design to the circle. This exposes the
+   underlying artwork that becomes real bleed past the cut line.
+8. **Confirm demo cut-line**: a second marquee is drawn at the catalog Ø
+   radius (= detected radius × catalog Ø / (catalog Ø + 2 × bleed)). Dialog
+   shows abbreviation field + size list + output dir. User saves or cancels.
+9. **Export loop**: flatten merged layers (mask state baked in), then for
+   each catalog Ø: duplicate working doc, scale detected Ø → (catalog Ø +
+   2 × bleed), fit canvas to that square (centred, white fill if source
+   was smaller), assign Gray Gamma 1.0, save TIFF, close duplicate.
+10. Working duplicate closes without saving. Master PSD on disk is unmodified.
 
 ### Bleed semantics
 

@@ -66,6 +66,22 @@ function addRectGuides(doc) {
     }
 }
 
+// Elliptical marquee selection in px. Used as a visual overlay during
+// confirmation dialogs — marching ants stay visible while a modal is open.
+function selectCircleAt(doc, cxPx, cyPx, rPx) {
+    var desc = new ActionDescriptor();
+    var ref = new ActionReference();
+    ref.putProperty(charIDToTypeID("Chnl"), charIDToTypeID("fsel"));
+    desc.putReference(charIDToTypeID("null"), ref);
+    var bounds = new ActionDescriptor();
+    bounds.putUnitDouble(charIDToTypeID("Top "), charIDToTypeID("#Pxl"), cyPx - rPx);
+    bounds.putUnitDouble(charIDToTypeID("Left"), charIDToTypeID("#Pxl"), cxPx - rPx);
+    bounds.putUnitDouble(charIDToTypeID("Btom"), charIDToTypeID("#Pxl"), cyPx + rPx);
+    bounds.putUnitDouble(charIDToTypeID("Rght"), charIDToTypeID("#Pxl"), cxPx + rPx);
+    desc.putObject(charIDToTypeID("T   "), charIDToTypeID("Elps"), bounds);
+    executeAction(charIDToTypeID("setd"), desc, DialogModes.NO);
+}
+
 // Idempotent: no-op if already Grayscale. Assigns Gray Gamma 1.0 to satisfy
 // the tool's ICC contract (wallgen ignores the profile but the tool insists).
 function convertDuotoneToGrayscale(doc) {
