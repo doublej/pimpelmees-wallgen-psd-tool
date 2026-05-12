@@ -55,19 +55,22 @@ function showWelcome() {
 
     var btnRow = dlg.add("group");
     btnRow.alignment = ["fill", "top"];
-    btnRow.spacing = 10;
+    btnRow.orientation = "column";
+    btnRow.alignChildren = ["fill", "top"];
+    btnRow.spacing = 8;
     var newBtn = btnRow.add("button", undefined, "Nieuw document\u2026");
-    newBtn.alignment = ["fill", "top"];
     newBtn.preferredSize = [-1, 36];
     var openBtn = btnRow.add("button", undefined, "Open bestand\u2026");
-    openBtn.alignment = ["fill", "top"];
     openBtn.preferredSize = [-1, 36];
+    var cirkelBtn = btnRow.add("button", undefined, "Verwerk cirkel\u2026");
+    cirkelBtn.preferredSize = [-1, 36];
     var cancelBtn = btnRow.add("button", undefined, "Annuleren", { name: "cancel" });
-    cancelBtn.preferredSize = [110, 36];
+    cancelBtn.preferredSize = [-1, 30];
 
     var action = "cancel";
     newBtn.onClick = function () { action = "newdoc"; dlg.close(); };
     openBtn.onClick = function () { action = "open"; dlg.close(); };
+    cirkelBtn.onClick = function () { action = "cirkel"; dlg.close(); };
     cancelBtn.onClick = function () { action = "cancel"; dlg.close(); };
 
     dlg.show();
@@ -76,5 +79,7 @@ function showWelcome() {
         showNewDocDialog();
     } else if (action === "open") {
         main();
+    } else if (action === "cirkel") {
+        cirkelFlow();
     }
 }
