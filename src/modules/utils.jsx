@@ -6,6 +6,12 @@ function formatBytes(b) {
     return (b / 1048576).toFixed(1) + " MB";
 }
 
+function padZero4(mm) {
+    var s = String(Math.round(mm));
+    while (s.length < 4) s = "0" + s;
+    return s;
+}
+
 function toSnakeCase(str) {
     return str
         .replace(/\.psd$/i, "")
