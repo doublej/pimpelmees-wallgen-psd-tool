@@ -66,12 +66,29 @@ function addRectGuides(doc) {
     }
 }
 
-// Draws a thick black ring on a fresh transparent layer so it stays visible
-// while a ScriptUI dialog blocks the canvas (marching-ants marquees do not).
-// Action-manager fill is used instead of SolidColor.fill — the latter silently
-// defaulted RGB white on grayscale docs and drew nothing visible.
-function drawCircleRing(doc, cxPx, cyPx, rPx, layerName) {
-    var ringW = Math.max(16, Math.round(rPx / 80));
+// Fills the bleed annulus (outer disk minus inner disk) with translucent
+// black on a fresh layer. Reads as one obvious "this strip gets trimmed off"
+// band instead of two thin rings that visually collapse together.
+function drawBleedAnnulus(doc, cxPx, cyPx, rOuterPx, rInnerPx, layerName) {
+    var layer = doc.artLayers.add();
+    layer.name = layerName;
+    doc.activeLayer = layer;
+
+    selectCircleAt(doc, cxPx, cyPx, rOuterPx);
+    fillSelectionBlack();
+    selectCircleAt(doc, cxPx, cyPx, rInnerPx);
+    try { doc.selection.clear(); } catch (e) {}
+    try { doc.selection.deselect(); } catch (e) {}
+
+    try { layer.opacity = 50; } catch (e) {}
+    try { app.refresh(); } catch (e) {}
+    return layer;
+}
+
+// Thin solid ring on a fresh layer. Used to mark the cut line crisply on top
+// of the annulus fill so the user sees exactly where the trim lands.
+function drawCircleRing(doc, cxPx, cyPx, rPx, layerName, ringWPx) {
+    var ringW = ringWPx || Math.max(6, Math.round(rPx / 250));
     var layer = doc.artLayers.add();
     layer.name = layerName;
     doc.activeLayer = layer;

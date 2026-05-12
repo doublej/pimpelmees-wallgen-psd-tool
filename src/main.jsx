@@ -131,15 +131,15 @@ function cirkelFlow() {
             diameterPx = detection.diameter_px;
         }
 
-        // Draw both rings: outer = detected (canvas edge), inner = cut line.
+        // Bleed annulus = filled band between cut line and canvas edge.
         // Cut radius = detected × catalog Ø / (catalog Ø + 2 × bleed).
         // Use the largest target — same proportion for all targets in the batch.
         var largestMm = diameterList[diameterList.length - 1];
         var cutRPx = detection.r_px * largestMm / (largestMm + 2 * bleedMm);
-        var canvasRing = drawCircleRing(working, detection.cx_px, detection.cy_px,
-            detection.r_px, "__cirkel_canvas");
+        var annulus = drawBleedAnnulus(working, detection.cx_px, detection.cy_px,
+            detection.r_px, cutRPx, "__cirkel_afloop");
         var cutRing = drawCircleRing(working, detection.cx_px, detection.cy_px,
-            cutRPx, "__cirkel_cut");
+            cutRPx, "__cirkel_snijlijn");
 
         var abbreviation = inferAbbreviation(psdFile.name);
         var masterDir = psdFile.parent.fsName;
@@ -155,7 +155,7 @@ function cirkelFlow() {
             detection: detection
         });
         removeOverlay(cutRing);
-        removeOverlay(canvasRing);
+        removeOverlay(annulus);
         if (!confirm) { working.close(SaveOptions.DONOTSAVECHANGES); return; }
 
         // Now flatten — masks (whatever state the user left them in) bake in.

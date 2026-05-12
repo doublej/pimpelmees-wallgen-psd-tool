@@ -77,9 +77,9 @@ function showDemoMaskConfirmDialog(opts) {
     header.graphics.font = ScriptUI.newFont("dialog", "Bold", 15);
 
     var hint = dlg.add("statictext", undefined,
-        "Twee zwarte ringen: de buitenste = canvasrand, de binnenste = snijlijn "
-        + "(daar wordt het wallpaper gesneden). Tussen die ringen zit de afloop ("
-        + opts.bleedMm + " mm) die het ontwerp moet blijven invullen.",
+        "De grijze band op het canvas = afloop (" + opts.bleedMm + " mm) — "
+        + "wordt straks weggesneden. De zwarte ring binnen die band = de "
+        + "snijlijn. Zorg dat het ontwerp doorloopt tot achter de band.",
         { multiline: true });
     hint.preferredSize = [-1, 60];
     hint.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
