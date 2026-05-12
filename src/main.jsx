@@ -142,18 +142,15 @@ function cirkelFlow() {
         });
         if (!confirm) { working.close(SaveOptions.DONOTSAVECHANGES); return; }
 
-        // Pre-scale working doc so detected Ø equals chosen catalog size.
-        // Each export iteration then resizes from this baseline to its target.
-        // Keep working doc at chosen Ø so detection.diameter_px maps cleanly.
-        resizeContentToDiameter(working, diameterPx, chosenMm);
-        var baselinePx = chosenMm / 25.4 * working.resolution;
-
+        // Each export iter duplicates `working` and scales from the original
+        // detected Ø in px. Bleed lives INSIDE the detected circle, so the
+        // resize target per iter is (catalog Ø + 2 × bleed), not catalog Ø.
         var saved = exportTiffSet(diameterList, {
             workingDoc: working,
             shape: shape,
             abbreviation: confirm.abbreviation,
             outputDir: outputDir,
-            detection: { diameter_px: baselinePx },
+            detection: { diameter_px: diameterPx },
             bleedMm: bleedMm
         });
 

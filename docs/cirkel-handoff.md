@@ -19,10 +19,25 @@ limitations as they land.
    - No detection → manual size picker as fallback.
 7. Confirm dialog: abbreviation (editable, prefilled from filename), size list,
    final canvas sizes, output dir preview.
-8. Export loop: for each catalog Ø, duplicate working doc, resize content to
-   target Ø, expand canvas with bleed (centred, white fill), assign Gray Gamma
-   1.0, save TIFF, close duplicate.
+8. Export loop: for each catalog Ø, duplicate working doc, scale detected
+   circle so its Ø equals **(catalog Ø + 2 × bleed)** — i.e. the detected
+   circle becomes the full canvas. Fit canvas to that final size square
+   (centred, white fill if source was smaller). Assign Gray Gamma 1.0. Save
+   TIFF. Close duplicate.
 9. Working duplicate closes without saving. Master PSD on disk is unmodified.
+
+### Bleed semantics
+
+Bleed lives **inside** the detected circle, not around it:
+
+- Inge's source circle = the **outer extent** of the design (= file canvas).
+- Cut line = **catalog Ø**, centred inside the canvas.
+- Bleed annulus = the ring between the cut line and the canvas edge that gets
+  trimmed off, protecting the cut from white-paper bleed-through.
+
+So a BC 950 export produces a 970 × 970 mm canvas (catalog 950 mm + 2 × 10 mm
+bleed), with the detected circle filling the full canvas. The cutter trims
+inward to 950 mm, leaving 10 mm of design overdraw on every side.
 
 Output:
 
@@ -63,9 +78,10 @@ bbox. Centre = bbox centre, radius = max(half-width, half-height).
 
 - **Off-centre circles** → bbox centre lies off the design centre.
   `resizeContentToDiameter` still hits the right Ø (it scales the whole doc),
-  but the bleed gets anchored on the document centre, not the design centre.
-  Mitigation: scope is mono masters that are roughly centred. If Inge sees
-  visibly off-centre output, log and switch to a layer-mask convention.
+  but the final canvas crop is anchored on the document centre, not the
+  design centre — so the cut-line/bleed ring is asymmetric. Mitigation: scope
+  is mono masters that are roughly centred. If Inge sees visibly off-centre
+  output, log and switch to a layer-mask convention.
 - **White-as-design** (logo on a white inner shape) → Color Range can't
   distinguish design-white from background-white. Mitigation: detection runs
   *before* any white background insertion, so source-supplied white still

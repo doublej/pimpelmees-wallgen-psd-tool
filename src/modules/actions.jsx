@@ -101,10 +101,11 @@ function resizeContentToDiameter(doc, detectedDiameterPx, targetDiameterMm) {
     doc.resizeImage(UnitValue(newW, "px"), UnitValue(newH, "px"), dpi, ResampleMethod.BICUBIC);
 }
 
-// After content is at catalog Ø, grow canvas to Ø + 2 × bleed (centred),
-// then fill new area white (mono contract).
-function expandCanvasWithBleed(doc, targetDiameterMm, bleedMm) {
-    var finalMm = targetDiameterMm + 2 * bleedMm;
+// After content is scaled, force canvas to exactly finalMm square, centred.
+// Source canvas may be larger (crop) or smaller (white fill) than the design
+// circle — final canvas == detected-circle Ø + nothing, because bleed lives
+// INSIDE that circle. Cut line will sit at finalMm − 2 × bleed (the catalog Ø).
+function fitCanvasToFinal(doc, finalMm) {
     var finalPx = mmToPx(finalMm);
     var prevBg = app.backgroundColor;
     var white = new SolidColor();
@@ -116,8 +117,6 @@ function expandCanvasWithBleed(doc, targetDiameterMm, bleedMm) {
         doc.resizeCanvas(UnitValue(finalPx, "px"), UnitValue(finalPx, "px"), AnchorPosition.MIDDLECENTER);
     } catch (e) {}
     app.backgroundColor = prevBg;
-    // Flatten so the new canvas area is opaque white (background fill colour
-    // only applies when there's a background layer; flatten guarantees it).
     try { doc.flatten(); } catch (e) {}
 }
 
@@ -141,8 +140,14 @@ function inferAbbreviation(fileName) {
 }
 
 // Per-target loop. Re-duplicates working doc per iteration so each export
-// starts from the same source state. opts: { workingDoc, shape (BC|MS),
-// abbreviation, outputDir, detection: {diameter_px}, bleedMm }.
+// starts from the same source state.
+//
+// Bleed lives INSIDE the detected circle. Detected circle Ø → final canvas Ø
+// (= catalog Ø + 2 × bleed). The cut line sits at catalog Ø, centred inside
+// the canvas, leaving a bleed annulus that protects the cut.
+//
+// opts: { workingDoc, shape (BC|MS), abbreviation, outputDir,
+//         detection: {diameter_px}, bleedMm }.
 function exportTiffSet(diameterMmList, opts) {
     var outDir = new Folder(opts.outputDir);
     if (!outDir.exists) outDir.create();
@@ -150,10 +155,11 @@ function exportTiffSet(diameterMmList, opts) {
     var savedNames = [];
     for (var i = 0; i < diameterMmList.length; i++) {
         var targetMm = diameterMmList[i];
+        var finalMm = targetMm + 2 * opts.bleedMm;
         var iter = opts.workingDoc.duplicate(opts.abbreviation + "_iter_" + targetMm);
         try {
-            resizeContentToDiameter(iter, opts.detection.diameter_px, targetMm);
-            expandCanvasWithBleed(iter, targetMm, opts.bleedMm);
+            resizeContentToDiameter(iter, opts.detection.diameter_px, finalMm);
+            fitCanvasToFinal(iter, finalMm);
             assignGrayGamma(iter);
 
             var fname = opts.abbreviation + "_" + opts.shape + "_" + padZero4(targetMm) + ".tif";
