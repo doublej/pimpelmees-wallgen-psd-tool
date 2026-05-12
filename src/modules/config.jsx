@@ -9,13 +9,11 @@ var EXPECTED_CMYK_ICC = "FOGRA39";
 var EXPECTED_DPI = 100;
 
 // New document dimensions (mm)
+// BC_DIAMETERS_MM, MS_DIAMETERS_MM, ARC_W_MM, ARC_H_MM come from
+// config-generated.jsx (codegen'd from wallgen/var/catalog/dimensions.json).
 var STROKE_W_MM = 487;
 var RECT_STROKES = [40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110];
 var RECT_HEIGHTS_MM = [2400, 2500, 2600, 2700, 2800, 2900];
-var BC_DIAMETERS_MM = [950, 1425, 1900, 2375];
-var MS_DIAMETERS_MM = [300, 1000, 1200, 1400];
-var ARC_W_MM = 900;
-var ARC_H_MM = 1750;
 var DL_STROKES = [50, 60, 65, 75, 80];
 var DL_HEIGHT_MM = 2000;
 var BLEED_RECT = 3;
