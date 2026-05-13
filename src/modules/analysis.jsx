@@ -205,6 +205,26 @@ function intersectSelectionWithLayerTransparency(doc) {
     executeAction(charIDToTypeID("Intr"), desc, DialogModes.NO);
 }
 
+// Set selection = active layer's opaque region (Cmd-click thumbnail equivalent).
+function loadLayerTransparencyAsSelection(doc) {
+    var desc = new ActionDescriptor();
+    var ref1 = new ActionReference();
+    ref1.putProperty(charIDToTypeID("Chnl"), charIDToTypeID("fsel"));
+    desc.putReference(charIDToTypeID("null"), ref1);
+    var ref2 = new ActionReference();
+    ref2.putEnumerated(charIDToTypeID("Chnl"), charIDToTypeID("Chnl"), charIDToTypeID("Trsp"));
+    desc.putReference(charIDToTypeID("T   "), ref2);
+    executeAction(charIDToTypeID("setd"), desc, DialogModes.NO);
+}
+
+// True if the active layer has ANY transparent pixels. Load opaque region,
+// invert; an empty inverted selection means the layer is fully opaque.
+function layerHasAnyTransparency(doc) {
+    try { loadLayerTransparencyAsSelection(doc); } catch (e) { return false; }
+    try { doc.selection.invert(); } catch (e) { return false; }
+    return !isSelectionEmpty(doc);
+}
+
 function isSelectionEmpty(doc) {
     try {
         var b = doc.selection.bounds;
@@ -237,6 +257,16 @@ function detectFrameMaskLayers(doc, circle) {
             if (!layerCoversDoc(L, doc, tolPx)) continue;
             try {
                 doc.activeLayer = L;
+
+                // Filter out fully-opaque layers (mountain artwork, white
+                // background fills). Without this, Intr against a no-transparency
+                // layer behaves as if the result were empty and produces false
+                // positives.
+                if (!layerHasAnyTransparency(doc)) {
+                    try { doc.selection.deselect(); } catch (e0) {}
+                    continue;
+                }
+
                 selectInnerEllipse(doc, circle.cx_px, circle.cy_px, insetDia);
                 var empty = false;
                 try {
