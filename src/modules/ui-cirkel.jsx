@@ -207,6 +207,43 @@ function showShapePickerDialog() {
     return bcRb.value ? "BC" : "MS";
 }
 
+function showCmykProfileNotice(currentProfile) {
+    var dlg = new Window("dialog", SCRIPT_NAME);
+    dlg.orientation = "column";
+    dlg.alignChildren = ["fill", "top"];
+    dlg.margins = [28, 24, 28, 20];
+    dlg.spacing = 6;
+    dlg.preferredSize = [DLG_W, -1];
+
+    var header = dlg.add("statictext", undefined, "ICC-profiel wijkt af");
+    header.graphics.font = ScriptUI.newFont("dialog", "Bold", 15);
+
+    addSpacer(dlg, 4);
+    addWarning(dlg,
+        "Dit CMYK-bestand staat niet op " + EXPECTED_CMYK_ICC + ".");
+
+    var desc = dlg.add("statictext", undefined,
+        "Huidig profiel: " + (currentProfile || "geen") + ".\n"
+        + "Ik converteer de kleuren naar " + NEW_DOC_CMYK_PROFILE + " "
+        + "(relative colorimetric, black point compensation, dithering aan). "
+        + "Het origineel blijft onaangetast — alle bewerkingen gebeuren op een kopie.",
+        { multiline: true });
+    desc.alignment = ["fill", "top"];
+    desc.preferredSize = [-1, 60];
+    desc.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
+
+    addSpacer(dlg, 8);
+
+    var btns = dlg.add("group");
+    btns.alignment = ["fill", "bottom"];
+    btns.add("button", undefined, "Annuleren", { name: "cancel" });
+    var spacer = btns.add("group");
+    spacer.alignment = ["fill", "center"];
+    btns.add("button", undefined, "Doorgaan", { name: "ok" });
+
+    return dlg.show() === 1;
+}
+
 function showDuotoneNotice() {
     var dlg = new Window("dialog", SCRIPT_NAME);
     dlg.orientation = "column";
