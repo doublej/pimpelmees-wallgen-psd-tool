@@ -144,6 +144,126 @@ function detectCircle(doc) {
     };
 }
 
+// Walk doc.layers recursively, collect visible leaf ArtLayers that could
+// be a frame-mask candidate. Skip invisible layers/groups, background, and
+// adjustment/text layers (only NORMAL + SMARTOBJECT pixel layers qualify).
+function collectVisibleLeaves(layers, parentPath, out) {
+    for (var i = 0; i < layers.length; i++) {
+        var L = layers[i];
+        if (!L.visible) continue;
+        var thisPath = parentPath ? parentPath + "/" + L.name : L.name;
+        if (L.typename === "LayerSet") {
+            collectVisibleLeaves(L.layers, thisPath, out);
+            continue;
+        }
+        if (L.isBackgroundLayer) continue;
+        var k;
+        try { k = L.kind; } catch (e) { continue; }
+        if (k !== LayerKind.NORMAL && k !== LayerKind.SMARTOBJECT) continue;
+        out.push({ layer: L, path: thisPath });
+    }
+}
+
+function layerCoversDoc(layer, doc, tolPx) {
+    var docW = doc.width.as("px");
+    var docH = doc.height.as("px");
+    var b = layer.bounds;
+    var l = b[0].as("px");
+    var t = b[1].as("px");
+    var r = b[2].as("px");
+    var bt = b[3].as("px");
+    if (Math.abs(l - 0) > tolPx) return false;
+    if (Math.abs(t - 0) > tolPx) return false;
+    if (Math.abs(r - docW) > tolPx) return false;
+    if (Math.abs(bt - docH) > tolPx) return false;
+    return true;
+}
+
+function selectInnerEllipse(doc, cx, cy, diameter) {
+    var r = diameter / 2;
+    var desc = new ActionDescriptor();
+    var ref = new ActionReference();
+    ref.putProperty(charIDToTypeID("Chnl"), charIDToTypeID("fsel"));
+    desc.putReference(charIDToTypeID("null"), ref);
+    var ell = new ActionDescriptor();
+    ell.putUnitDouble(charIDToTypeID("Top "), charIDToTypeID("#Pxl"), cy - r);
+    ell.putUnitDouble(charIDToTypeID("Left"), charIDToTypeID("#Pxl"), cx - r);
+    ell.putUnitDouble(charIDToTypeID("Btom"), charIDToTypeID("#Pxl"), cy + r);
+    ell.putUnitDouble(charIDToTypeID("Rght"), charIDToTypeID("#Pxl"), cx + r);
+    desc.putObject(charIDToTypeID("T   "), charIDToTypeID("Elps"), ell);
+    executeAction(charIDToTypeID("setd"), desc, DialogModes.NO);
+}
+
+function intersectSelectionWithLayerTransparency(doc) {
+    var desc = new ActionDescriptor();
+    var ref1 = new ActionReference();
+    ref1.putProperty(charIDToTypeID("Chnl"), charIDToTypeID("fsel"));
+    desc.putReference(charIDToTypeID("null"), ref1);
+    var ref2 = new ActionReference();
+    ref2.putEnumerated(charIDToTypeID("Chnl"), charIDToTypeID("Chnl"), charIDToTypeID("Trsp"));
+    desc.putReference(charIDToTypeID("T   "), ref2);
+    executeAction(charIDToTypeID("Intr"), desc, DialogModes.NO);
+}
+
+function isSelectionEmpty(doc) {
+    try {
+        var b = doc.selection.bounds;
+        return !b;
+    } catch (e) {
+        return true;
+    }
+}
+
+// Find layers that look like a circle-frame mask: full-canvas bounds AND
+// fully transparent inside a centred ellipse at 98% of the detected circle Ø.
+// Returns [{ layer, name, path }, ...]. Empty when no candidates.
+// Restores active layer + clears selection on every exit path.
+function detectFrameMaskLayers(doc, circle) {
+    var result = [];
+    var prevActive = null;
+    try { prevActive = doc.activeLayer; } catch (e) {}
+
+    try {
+        var leaves = [];
+        collectVisibleLeaves(doc.layers, "", leaves);
+        if (leaves.length === 0) return result;
+
+        var tolPx = 2;
+        var insetDia = circle.diameter_px * 0.98;
+
+        for (var i = 0; i < leaves.length; i++) {
+            var entry = leaves[i];
+            var L = entry.layer;
+            if (!layerCoversDoc(L, doc, tolPx)) continue;
+            try {
+                doc.activeLayer = L;
+                selectInnerEllipse(doc, circle.cx_px, circle.cy_px, insetDia);
+                var empty = false;
+                try {
+                    intersectSelectionWithLayerTransparency(doc);
+                } catch (intersectErr) {
+                    // Photoshop throws when the intersected result would be empty.
+                    empty = true;
+                }
+                if (!empty) empty = isSelectionEmpty(doc);
+                if (empty) {
+                    result.push({ layer: L, name: L.name, path: entry.path });
+                }
+                try { doc.selection.deselect(); } catch (e1) {}
+            } catch (loopErr) {
+                try { doc.selection.deselect(); } catch (e2) {}
+            }
+        }
+    } catch (outerErr) {
+        try { doc.selection.deselect(); } catch (e3) {}
+    }
+
+    if (prevActive) {
+        try { doc.activeLayer = prevActive; } catch (e) {}
+    }
+    return result;
+}
+
 // Map measured diameter (mm) to the nearest BC or MS catalog size.
 // Ambiguous when measured falls between two catalog sizes and is within
 // 15% of either — surface both so the user can pick.
