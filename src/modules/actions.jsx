@@ -67,16 +67,16 @@ function addRectGuides(doc) {
 }
 
 // Idempotent: no-op if already Grayscale. Bakes duotone composite into a
-// real gray channel calibrated to Gray Gamma 1.0.
+// real gray channel.
 //
-// Why convertToProfile instead of changeMode(GRAYSCALE):
-// Duotone stores ONE underlying gray channel + per-ink curves applied at
-// render time. changeMode(GRAYSCALE) discards the curves and exposes the
-// raw channel — visibly lighter/flatter than what the artist designed.
-// convertToProfile(Gray Gamma 1.0) renders the duotone composite (curves
-// + ink colors + dot-gain working space) through the colour engine and
-// writes the result back as a single gray channel in the target profile.
-// Mode flips to GRAYSCALE as a side effect; tone survives.
+// Path: Duotone → RGB → Grayscale.
+//   Duotone → RGB renders the visible composite (curves + ink colors)
+//     into actual RGB pixels. This step is always supported (older PS
+//     blocks "Convert to Profile" on Duotone, but RGB mode flip works).
+//   RGB → Grayscale collapses via luminance, so the rendered composite
+//     survives the collapse.
+// Direct Duotone → Grayscale would strip the curves and reveal the flat
+// underlying channel — visibly lighter than the artist's composite.
 function convertDuotoneToGrayscale(doc) {
     if (doc.mode === DocumentMode.GRAYSCALE) {
         assignGrayGamma(doc);
@@ -84,21 +84,9 @@ function convertDuotoneToGrayscale(doc) {
     }
     if (doc.mode !== DocumentMode.DUOTONE) return;
     unlockBackground(doc);
-    convertToProfile(doc, NEW_DOC_GRAY_PROFILE);
+    doc.changeMode(ChangeMode.RGB);
+    doc.changeMode(ChangeMode.GRAYSCALE);
     assignGrayGamma(doc);
-}
-
-function convertToProfile(doc, profileName) {
-    var desc = new ActionDescriptor();
-    var ref = new ActionReference();
-    ref.putEnumerated(charIDToTypeID("Dcmn"), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
-    desc.putReference(charIDToTypeID("null"), ref);
-    desc.putString(stringIDToTypeID("profile"), profileName);
-    desc.putEnumerated(stringIDToTypeID("intent"), stringIDToTypeID("colorConversionType"), stringIDToTypeID("relativeColorimetric"));
-    desc.putBoolean(stringIDToTypeID("mapBlack"), true);
-    desc.putBoolean(stringIDToTypeID("dither"), true);
-    desc.putBoolean(stringIDToTypeID("flatten"), true);
-    executeAction(stringIDToTypeID("convertToProfile"), desc, DialogModes.NO);
 }
 
 function assignGrayGamma(doc) {
