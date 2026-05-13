@@ -38,6 +38,7 @@ MODULES=(
     src/modules/ui-preview.jsx
     src/modules/ui-newdoc.jsx
     src/modules/ui-cirkel.jsx
+    src/modules/automode.jsx
     src/main.jsx
 )
 
