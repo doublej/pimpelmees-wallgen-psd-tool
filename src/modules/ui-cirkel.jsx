@@ -260,11 +260,14 @@ function showDuotoneNotice() {
         "Dit bestand staat op Duotone. Ik converteer hem naar grijswaarden voor je.");
 
     var desc = dlg.add("statictext", undefined,
-        "Wallgen verwacht Grayscale + Gray Gamma 1.0. Het origineel blijft "
-        + "onaangetast — alle bewerkingen gebeuren op een kopie.",
+        "Dit wordt een mono-cirkel: Grayscale + Gray Gamma 1.0. Het origineel "
+        + "blijft onaangetast — alle bewerkingen gebeuren op een kopie.\n\n"
+        + "Bedoel je een full-colour collage-cirkel? Annuleer en lever het "
+        + "bron-PSD aan in CMYK + " + EXPECTED_CMYK_ICC + ". De collage-route "
+        + "wordt nu overgeslagen omdat de bron Duotone is.",
         { multiline: true });
     desc.alignment = ["fill", "top"];
-    desc.preferredSize = [-1, 40];
+    desc.preferredSize = [-1, 90];
     desc.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
 
     addSpacer(dlg, 8);
