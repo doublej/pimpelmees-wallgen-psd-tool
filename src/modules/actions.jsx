@@ -258,36 +258,48 @@ function selectCircleAt(doc, cxPx, cyPx, rPx) {
     executeAction(charIDToTypeID("setd"), desc, DialogModes.NO);
 }
 
-// Idempotent: no-op if already Grayscale. Assigns Gray Gamma 1.0 to satisfy
-// the tool's ICC contract (wallgen ignores the profile but the tool insists).
+// Idempotent: no-op if already Grayscale. Bakes duotone composite into a
+// real gray channel calibrated to Gray Gamma 1.0.
 //
-// IMPORTANT: flatten while still Duotone so the composite (blends, layer
-// effects, adjustment layers) is baked correctly before mode conversion.
-// Converting each Duotone layer independently drifts the composite math —
-// per-layer changeMode produces visibly different contrast than the original
-// flat preview.
+// Why convertToProfile instead of changeMode(GRAYSCALE):
+// Duotone stores ONE underlying gray channel + per-ink curves applied at
+// render time. changeMode(GRAYSCALE) discards the curves and exposes the
+// raw channel — visibly lighter/flatter than what the artist designed.
+// convertToProfile(Gray Gamma 1.0) renders the duotone composite (curves
+// + ink colors + dot-gain working space) through the colour engine and
+// writes the result back as a single gray channel in the target profile.
+// Mode flips to GRAYSCALE as a side effect; tone survives.
 function convertDuotoneToGrayscale(doc) {
-    if (doc.mode !== DocumentMode.DUOTONE) {
-        if (doc.mode === DocumentMode.GRAYSCALE) {
-            assignGrayGamma(doc);
-        }
+    if (doc.mode === DocumentMode.GRAYSCALE) {
+        assignGrayGamma(doc);
         return;
     }
-    try { unlockBackground(doc); } catch (e) {}
-    try { doc.flatten(); } catch (e) {}
-    doc.changeMode(ChangeMode.GRAYSCALE);
+    if (doc.mode !== DocumentMode.DUOTONE) return;
+    unlockBackground(doc);
+    convertToProfile(doc, NEW_DOC_GRAY_PROFILE);
     assignGrayGamma(doc);
 }
 
+function convertToProfile(doc, profileName) {
+    var desc = new ActionDescriptor();
+    var ref = new ActionReference();
+    ref.putEnumerated(charIDToTypeID("Dcmn"), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+    desc.putReference(charIDToTypeID("null"), ref);
+    desc.putString(stringIDToTypeID("profile"), profileName);
+    desc.putEnumerated(stringIDToTypeID("intent"), stringIDToTypeID("colorConversionType"), stringIDToTypeID("relativeColorimetric"));
+    desc.putBoolean(stringIDToTypeID("mapBlack"), true);
+    desc.putBoolean(stringIDToTypeID("dither"), true);
+    desc.putBoolean(stringIDToTypeID("flatten"), true);
+    executeAction(stringIDToTypeID("convertToProfile"), desc, DialogModes.NO);
+}
+
 function assignGrayGamma(doc) {
-    try {
-        var desc = new ActionDescriptor();
-        var ref = new ActionReference();
-        ref.putEnumerated(charIDToTypeID("Dcmn"), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
-        desc.putReference(charIDToTypeID("null"), ref);
-        desc.putString(stringIDToTypeID("profile"), NEW_DOC_GRAY_PROFILE);
-        executeAction(stringIDToTypeID("assignProfile"), desc, DialogModes.NO);
-    } catch (e) {}
+    var desc = new ActionDescriptor();
+    var ref = new ActionReference();
+    ref.putEnumerated(charIDToTypeID("Dcmn"), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+    desc.putReference(charIDToTypeID("null"), ref);
+    desc.putString(stringIDToTypeID("profile"), NEW_DOC_GRAY_PROFILE);
+    executeAction(stringIDToTypeID("assignProfile"), desc, DialogModes.NO);
 }
 
 // Resample whole document so detectedDiameterPx becomes targetDiameterMm.
