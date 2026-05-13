@@ -174,7 +174,9 @@ function cirkelFlow() {
         }
 
         // Now flatten — masks (whatever state the user left them in) bake in.
-        if (working.layers.length > 1) working.mergeVisibleLayers();
+        // flatten() over mergeVisibleLayers(): handles single-visible-layer case
+        // (Photoshop errors "command not available" on mergeVisible with <2 visible).
+        try { working.flatten(); } catch (e) {}
 
         var saved = exportTiffSet(diameterList, {
             workingDoc: working,
