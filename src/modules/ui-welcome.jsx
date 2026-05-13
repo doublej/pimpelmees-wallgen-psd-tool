@@ -64,6 +64,8 @@ function showWelcome() {
     openBtn.preferredSize = [-1, 36];
     var cirkelBtn = btnRow.add("button", undefined, "Verwerk cirkel\u2026");
     cirkelBtn.preferredSize = [-1, 36];
+    var automodeBtn = btnRow.add("button", undefined, "Automode (map cirkels)\u2026");
+    automodeBtn.preferredSize = [-1, 36];
     var cancelBtn = btnRow.add("button", undefined, "Annuleren", { name: "cancel" });
     cancelBtn.preferredSize = [-1, 30];
 
@@ -71,6 +73,7 @@ function showWelcome() {
     newBtn.onClick = function () { action = "newdoc"; dlg.close(); };
     openBtn.onClick = function () { action = "open"; dlg.close(); };
     cirkelBtn.onClick = function () { action = "cirkel"; dlg.close(); };
+    automodeBtn.onClick = function () { action = "automode"; dlg.close(); };
     cancelBtn.onClick = function () { action = "cancel"; dlg.close(); };
 
     dlg.show();
@@ -81,5 +84,7 @@ function showWelcome() {
         main();
     } else if (action === "cirkel") {
         cirkelFlow();
+    } else if (action === "automode") {
+        automodeFolder();
     }
 }
