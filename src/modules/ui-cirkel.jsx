@@ -85,6 +85,33 @@ function showDemoMaskConfirmDialog(opts) {
 
     addSpacer(dlg, 6);
 
+    var maskCbs = [];
+    if (opts.maskCandidates && opts.maskCandidates.length > 0) {
+        var n = opts.maskCandidates.length;
+        addWarning(dlg, n > 1
+            ? "Maskeerlaag gedetecteerd: " + n + " lagen"
+            : "Maskeerlaag gedetecteerd");
+        var maskTxt = dlg.add("statictext", undefined,
+            "Deze lagen bedekken het volledige canvas en zijn transparant "
+            + "binnen de cirkel — ze bakken straks als rand in de TIFF, "
+            + "tenzij ze nu uitgeschakeld worden.",
+            { multiline: true });
+        maskTxt.preferredSize = [-1, 40];
+        maskTxt.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
+
+        var maskGrp = dlg.add("group");
+        maskGrp.orientation = "column";
+        maskGrp.alignChildren = ["left", "top"];
+        maskGrp.spacing = 2;
+        for (var mi = 0; mi < opts.maskCandidates.length; mi++) {
+            var cb = maskGrp.add("checkbox", undefined,
+                "Verbergen: " + opts.maskCandidates[mi].path);
+            cb.value = true;
+            maskCbs.push(cb);
+        }
+        addSpacer(dlg, 8);
+    }
+
     var col = dlg.add("group");
     col.orientation = "column";
     col.alignChildren = ["fill", "top"];
@@ -132,7 +159,14 @@ function showDemoMaskConfirmDialog(opts) {
 
     var abbr = abbrInput.text.replace(/^\s+|\s+$/g, "");
     if (!abbr) abbr = opts.abbreviation;
-    return { abbreviation: abbr };
+
+    var hideLayers = [];
+    if (opts.maskCandidates) {
+        for (var hi = 0; hi < maskCbs.length; hi++) {
+            if (maskCbs[hi].value) hideLayers.push(opts.maskCandidates[hi].layer);
+        }
+    }
+    return { abbreviation: abbr, hideLayers: hideLayers };
 }
 
 function showShapePickerDialog() {
