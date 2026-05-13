@@ -131,6 +131,8 @@ function cirkelFlow() {
             diameterPx = detection.diameter_px;
         }
 
+        var maskCandidates = detectFrameMaskLayers(working, detection);
+
         var abbreviation = inferAbbreviation(psdFile.name);
         var masterDir = psdFile.parent.fsName;
         var masterBase = psdFile.name.replace(/\.[^.]+$/, "");
@@ -147,9 +149,16 @@ function cirkelFlow() {
             abbreviation: abbreviation,
             diameterMmList: diameterList,
             outputDir: outputDir,
-            detection: detection
+            detection: detection,
+            maskCandidates: maskCandidates
         });
         if (!confirm) { working.close(SaveOptions.DONOTSAVECHANGES); return; }
+
+        if (confirm.hideLayers && confirm.hideLayers.length > 0) {
+            for (var hi = 0; hi < confirm.hideLayers.length; hi++) {
+                try { confirm.hideLayers[hi].visible = false; } catch (e) {}
+            }
+        }
 
         // Now flatten — masks (whatever state the user left them in) bake in.
         if (working.layers.length > 1) working.mergeVisibleLayers();
