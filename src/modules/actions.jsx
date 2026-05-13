@@ -98,6 +98,41 @@ function assignGrayGamma(doc) {
     executeAction(stringIDToTypeID("assignProfile"), desc, DialogModes.NO);
 }
 
+function assignCmykFogra39(doc) {
+    var desc = new ActionDescriptor();
+    var ref = new ActionReference();
+    ref.putEnumerated(charIDToTypeID("Dcmn"), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+    desc.putReference(charIDToTypeID("null"), ref);
+    desc.putString(stringIDToTypeID("profile"), NEW_DOC_CMYK_PROFILE);
+    executeAction(stringIDToTypeID("assignProfile"), desc, DialogModes.NO);
+}
+
+// Remap pixel values to FOGRA39. Used when a CMYK source carries a
+// different working space (e.g. SWOP, ISO Coated v2) — collage prints
+// must land in FOGRA39 numerically, not just be retagged.
+function convertToFogra39(doc) {
+    var desc = new ActionDescriptor();
+    var ref = new ActionReference();
+    ref.putEnumerated(charIDToTypeID("Dcmn"), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+    desc.putReference(charIDToTypeID("null"), ref);
+    desc.putString(stringIDToTypeID("profile"), NEW_DOC_CMYK_PROFILE);
+    desc.putEnumerated(charIDToTypeID("Inte"), charIDToTypeID("Inte"), charIDToTypeID("Rltv"));
+    desc.putBoolean(charIDToTypeID("MpBl"), true);
+    desc.putBoolean(charIDToTypeID("Dthr"), true);
+    executeAction(stringIDToTypeID("convertToProfile"), desc, DialogModes.NO);
+}
+
+// Reassign the working profile per doc mode. Called per-iter in
+// exportTiffSet so the saved TIFF carries the expected tag regardless
+// of upstream resize/canvas operations.
+function assignTargetProfile(doc) {
+    if (doc.mode === DocumentMode.GRAYSCALE) {
+        assignGrayGamma(doc);
+    } else if (doc.mode === DocumentMode.CMYK) {
+        assignCmykFogra39(doc);
+    }
+}
+
 // Resample whole document so detectedDiameterPx becomes targetDiameterMm.
 // Canvas resizes proportionally with the content.
 function resizeContentToDiameter(doc, detectedDiameterPx, targetDiameterMm) {
@@ -168,7 +203,7 @@ function exportTiffSet(diameterMmList, opts) {
         try {
             resizeContentToDiameter(iter, opts.detection.diameter_px, finalMm);
             fitCanvasToFinal(iter, finalMm);
-            assignGrayGamma(iter);
+            assignTargetProfile(iter);
 
             var fname = opts.abbreviation + "_" + opts.shape + "_" + padZero4(targetMm) + ".tif";
             var outFile = new File(outDir.fsName + "/" + fname);
