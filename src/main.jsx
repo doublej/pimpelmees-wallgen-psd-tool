@@ -143,6 +143,7 @@ function cirkelFlow() {
         }
 
         var maskCandidates = detectFrameMaskLayers(working, detection);
+        var maskThumbnails = renderMaskCandidateThumbnails(working, maskCandidates);
 
         var abbreviation = inferAbbreviation(psdFile.name);
         var masterDir = psdFile.parent.fsName;
@@ -161,7 +162,8 @@ function cirkelFlow() {
             diameterMmList: diameterList,
             outputDir: outputDir,
             detection: detection,
-            maskCandidates: maskCandidates
+            maskCandidates: maskCandidates,
+            maskThumbnails: maskThumbnails
         });
         if (!confirm) { working.close(SaveOptions.DONOTSAVECHANGES); return; }
 

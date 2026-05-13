@@ -94,19 +94,30 @@ function showDemoMaskConfirmDialog(opts) {
         var maskTxt = dlg.add("statictext", undefined,
             "Deze lagen bedekken het volledige canvas en zijn transparant "
             + "binnen de cirkel — ze bakken straks als rand in de TIFF, "
-            + "tenzij ze nu uitgeschakeld worden.",
+            + "tenzij ze nu uitgeschakeld worden. Vink de lagen aan die "
+            + "verborgen moeten worden.",
             { multiline: true });
-        maskTxt.preferredSize = [-1, 40];
+        maskTxt.preferredSize = [-1, 50];
         maskTxt.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
 
         var maskGrp = dlg.add("group");
         maskGrp.orientation = "column";
         maskGrp.alignChildren = ["left", "top"];
-        maskGrp.spacing = 2;
+        maskGrp.spacing = 8;
         for (var mi = 0; mi < opts.maskCandidates.length; mi++) {
-            var cb = maskGrp.add("checkbox", undefined,
-                "Verbergen: " + opts.maskCandidates[mi].path);
+            var row = maskGrp.add("group");
+            row.orientation = "row";
+            row.alignChildren = ["left", "center"];
+            row.spacing = 10;
+            var cb = row.add("checkbox", undefined, "");
             cb.value = true;
+            var thumbFile = opts.maskThumbnails && opts.maskThumbnails[mi];
+            if (thumbFile && thumbFile.exists) {
+                try { row.add("image", undefined, thumbFile); } catch (eImg) {}
+            }
+            var lbl = row.add("statictext", undefined,
+                "Verbergen: " + opts.maskCandidates[mi].path);
+            lbl.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
             maskCbs.push(cb);
         }
         addSpacer(dlg, 8);

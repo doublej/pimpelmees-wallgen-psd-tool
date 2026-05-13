@@ -218,6 +218,88 @@ function exportTiffSet(diameterMmList, opts) {
     return savedNames;
 }
 
+// Walk layer tree, hide every layer (groups + leaves). Background layers
+// can't be hidden — they're caught by the try/catch and rely on the doc
+// already being unlocked upstream.
+function hideAllLayersDeep(layers) {
+    for (var i = 0; i < layers.length; i++) {
+        try { layers[i].visible = false; } catch (e) {}
+        if (layers[i].typename === "LayerSet") {
+            hideAllLayersDeep(layers[i].layers);
+        }
+    }
+}
+
+// Walk a "/"-split path through layer groups, set each ancestor + the
+// target leaf to visible. Returns true on success.
+function showLayerAndAncestors(layers, parts, depth) {
+    for (var i = 0; i < layers.length; i++) {
+        if (layers[i].name !== parts[depth]) continue;
+        try { layers[i].visible = true; } catch (e) {}
+        if (depth === parts.length - 1) return true;
+        if (layers[i].typename !== "LayerSet") return false;
+        return showLayerAndAncestors(layers[i].layers, parts, depth + 1);
+    }
+    return false;
+}
+
+// Per-candidate solo render: duplicate working doc once, downsize, then
+// loop candidates toggling visibility + saving a PNG. Returns array of
+// File objects parallel to candidates (or null entries on failure).
+function renderMaskCandidateThumbnails(workingDoc, candidates) {
+    if (!candidates || candidates.length === 0) return [];
+    var result = [];
+    var thumbDoc = null;
+    var folder = null;
+    var maxDim = 120;
+
+    try {
+        folder = new Folder(Folder.temp.fsName + "/wallgen_mask_thumbs_" + (new Date()).getTime());
+        folder.create();
+
+        thumbDoc = workingDoc.duplicate("__mask_thumb__");
+        if (thumbDoc.mode === DocumentMode.CMYK) {
+            thumbDoc.changeMode(ChangeMode.RGB);
+        }
+
+        var w = thumbDoc.width.as("px"), h = thumbDoc.height.as("px");
+        var maxSide = w > h ? w : h;
+        if (maxSide > maxDim) {
+            var scale = maxDim / maxSide;
+            thumbDoc.resizeImage(
+                UnitValue(Math.round(w * scale), "px"),
+                UnitValue(Math.round(h * scale), "px"),
+                undefined, ResampleMethod.BICUBIC
+            );
+        }
+
+        for (var ci = 0; ci < candidates.length; ci++) {
+            var parts = candidates[ci].path.split("/");
+            hideAllLayersDeep(thumbDoc.layers);
+            var ok = showLayerAndAncestors(thumbDoc.layers, parts, 0);
+            if (!ok) { result.push(null); continue; }
+
+            var pngFile = new File(folder.fsName + "/cand_" + ci + ".png");
+            try {
+                var opts = new PNGSaveOptions();
+                opts.compression = 9;
+                opts.interlaced = false;
+                thumbDoc.saveAs(pngFile, opts, true, Extension.LOWERCASE);
+                result.push(pngFile);
+            } catch (e) {
+                result.push(null);
+            }
+        }
+    } catch (outer) {
+        while (result.length < candidates.length) result.push(null);
+    }
+
+    if (thumbDoc) {
+        try { thumbDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (e) {}
+    }
+    return result;
+}
+
 function createNewDocument(widthPx, heightPx, isMono, docName) {
     var mode = isMono ? NewDocumentMode.GRAYSCALE : NewDocumentMode.CMYK;
     var profile = isMono ? NEW_DOC_GRAY_PROFILE : NEW_DOC_CMYK_PROFILE;
