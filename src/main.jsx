@@ -194,15 +194,3 @@ function cirkelFlow() {
 
     try { working.close(SaveOptions.DONOTSAVECHANGES); } catch (e) {}
 }
-
-// MS drops 300 mm (sticker too small to need a dedicated input — wallgen
-// scales from 1000 mm if needed). BC exports all four catalog diameters.
-function batchDiameterList(shape) {
-    var src = (shape === "MS") ? MS_DIAMETERS_MM : BC_DIAMETERS_MM;
-    var out = [];
-    for (var i = 0; i < src.length; i++) {
-        if (shape === "MS" && src[i] === 300) continue;
-        out.push(src[i]);
-    }
-    return out;
-}
