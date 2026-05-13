@@ -131,37 +131,24 @@ function cirkelFlow() {
             diameterPx = detection.diameter_px;
         }
 
-        // Bleed annulus = filled band between cut line and canvas edge.
-        // Cut radius = detected × catalog Ø / (catalog Ø + 2 × bleed).
-        // Use the largest target — same proportion for all targets in the batch.
-        var largestMm = diameterList[diameterList.length - 1];
-        var cutRPx = detection.r_px * largestMm / (largestMm + 2 * bleedMm);
-        var annulus = drawBleedAnnulus(working, detection.cx_px, detection.cy_px,
-            detection.r_px, cutRPx, "__cirkel_afloop");
-        var cutRing = drawCircleRing(working, detection.cx_px, detection.cy_px,
-            cutRPx, "__cirkel_snijlijn");
-
-        // Render preview PNGs (whole circle + zoomed edges of the cut line)
-        // so the user can verify alignment without zooming the locked canvas.
-        var previews = buildCirkelPreviews(working, detection, cutRPx, "/tmp/pimpelmees-cirkel-preview");
-
         var abbreviation = inferAbbreviation(psdFile.name);
         var masterDir = psdFile.parent.fsName;
         var masterBase = psdFile.name.replace(/\.[^.]+$/, "");
         var outputDir = masterDir + "/" + masterBase + "_export";
 
+        // Dialog is type "dialog" (app-modal) — Photoshop blocks all canvas
+        // input while it's open, so the user cannot poke the working doc.
+        // That's why we no longer draw overlay rings or embed cropped PNG
+        // previews: there's nothing the user can verify-against by clicking,
+        // and the values shown in the dialog already describe the cut.
         var confirm = showDemoMaskConfirmDialog({
             shape: shape,
             bleedMm: bleedMm,
             abbreviation: abbreviation,
             diameterMmList: diameterList,
             outputDir: outputDir,
-            detection: detection,
-            previews: previews
+            detection: detection
         });
-        cleanupPreviews(previews);
-        removeOverlay(cutRing);
-        removeOverlay(annulus);
         if (!confirm) { working.close(SaveOptions.DONOTSAVECHANGES); return; }
 
         // Now flatten — masks (whatever state the user left them in) bake in.

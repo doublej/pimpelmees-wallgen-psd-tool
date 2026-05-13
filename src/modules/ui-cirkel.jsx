@@ -61,50 +61,29 @@ function showLayoutSameDialog() {
     return sameRb.value ? "same" : "different";
 }
 
-// Final (and only) confirm before save. Two rings are drawn on canvas:
-// outer = detected/canvas edge, inner = catalog cut line. The annulus
-// between is the bleed zone. Carries the abbreviation field — last chance
-// to edit before TIFFs land.
+// Final (and only) confirm before save. Carries the abbreviation field —
+// last chance to edit before TIFFs land. Dialog is app-modal so the user
+// cannot interact with the canvas behind it.
 function showDemoMaskConfirmDialog(opts) {
     var dlg = new Window("dialog", SCRIPT_NAME);
     dlg.orientation = "column";
     dlg.alignChildren = ["fill", "top"];
     dlg.margins = [28, 24, 28, 20];
     dlg.spacing = 6;
-    dlg.preferredSize = [Math.max(DLG_W, 760), -1];
+    dlg.preferredSize = [DLG_W, -1];
 
     var header = dlg.add("statictext", undefined, "Klopt de snijlijn?");
     header.graphics.font = ScriptUI.newFont("dialog", "Bold", 15);
 
     var hint = dlg.add("statictext", undefined,
-        "Grijze band = afloop (" + opts.bleedMm + " mm) — wordt straks "
-        + "weggesneden. Zwarte ring = snijlijn. Het ontwerp moet doorlopen "
-        + "tot voorbij de band.",
+        "Afloop = " + opts.bleedMm + " mm rondom de cirkel — wordt straks "
+        + "weggesneden. Controleer of het ontwerp doorloopt voorbij de "
+        + "gevonden cirkelrand.",
         { multiline: true });
     hint.preferredSize = [-1, 40];
     hint.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
 
     addSpacer(dlg, 6);
-
-    if (opts.previews && opts.previews.length > 0) {
-        var prevRow = dlg.add("group");
-        prevRow.orientation = "row";
-        prevRow.alignChildren = ["top", "top"];
-        prevRow.spacing = 10;
-        for (var pi = 0; pi < opts.previews.length; pi++) {
-            var p = opts.previews[pi];
-            var cell = prevRow.add("group");
-            cell.orientation = "column";
-            cell.alignChildren = ["center", "top"];
-            cell.spacing = 4;
-            try { cell.add("image", undefined, p.file); } catch (e) {}
-            var cap = cell.add("statictext", undefined, p.label);
-            cap.graphics.font = ScriptUI.newFont("dialog", "Regular", 10);
-        }
-        addSpacer(dlg, 8);
-    }
-
-    addSpacer(dlg, 4);
 
     var col = dlg.add("group");
     col.orientation = "column";
