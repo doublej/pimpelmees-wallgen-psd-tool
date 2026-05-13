@@ -99,13 +99,24 @@ function cirkelFlow() {
                 return;
             }
             convertDuotoneToGrayscale(working);
-        } else if (working.mode !== DocumentMode.GRAYSCALE) {
-            alert("Dit bestand is niet Duotone of Grijswaarden (" + getColorModeName(working.mode)
-                + ").\nConverteer eerst naar Grayscale of Duotone en probeer opnieuw.");
+        } else if (working.mode === DocumentMode.GRAYSCALE) {
+            convertDuotoneToGrayscale(working);
+        } else if (working.mode === DocumentMode.CMYK) {
+            // Collage path: keep full colour, ensure FOGRA39 numerically.
+            var iccIssue = checkIccProfile(working);
+            if (iccIssue && !iccIssue.wrongMode) {
+                if (!showCmykProfileNotice(iccIssue.profile)) {
+                    working.close(SaveOptions.DONOTSAVECHANGES);
+                    return;
+                }
+                convertToFogra39(working);
+            }
+        } else {
+            alert("Dit bestand is niet Duotone, Grijswaarden of CMYK ("
+                + getColorModeName(working.mode)
+                + ").\nConverteer eerst naar Grayscale, Duotone of CMYK en probeer opnieuw.");
             working.close(SaveOptions.DONOTSAVECHANGES);
             return;
-        } else {
-            convertDuotoneToGrayscale(working);
         }
 
         unlockBackground(working);
