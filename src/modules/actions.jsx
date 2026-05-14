@@ -230,6 +230,53 @@ function exportTiffSet(diameterMmList, opts) {
     return savedNames;
 }
 
+// Walk the layer tree and delete every hidden layer (and any group that
+// becomes empty as a result). Iterates in reverse so removal doesn't
+// invalidate indices. Run pre-flatten to shrink the doc before resizes
+// and per-iter duplicates — fewer layers = faster everything downstream.
+function removeHiddenLayersDeep(doc, layers) {
+    for (var i = layers.length - 1; i >= 0; i--) {
+        var L = layers[i];
+        if (L.typename === "LayerSet") {
+            removeHiddenLayersDeep(doc, L.layers);
+            if (!L.visible || L.layers.length === 0) {
+                try { L.remove(); } catch (e) {}
+            }
+        } else if (!L.visible) {
+            try { L.remove(); } catch (e) {}
+        }
+    }
+}
+
+// Delete (discard, don't apply) the active layer's pixel mask. Throws
+// when there's no mask — caller's try/catch swallows that.
+function discardActiveLayerMask() {
+    var desc = new ActionDescriptor();
+    var ref = new ActionReference();
+    ref.putEnumerated(charIDToTypeID("Chnl"), charIDToTypeID("Chnl"), stringIDToTypeID("mask"));
+    desc.putReference(charIDToTypeID("null"), ref);
+    executeAction(charIDToTypeID("Dlt "), desc, DialogModes.NO);
+}
+
+// Walk visible layers/groups, discard any pixel layer mask. Skips hidden
+// layers (they'll be dropped by flatten anyway) — important so the frame
+// mask layer's own mask isn't touched on its way out. Called pre-flatten
+// so design content under circular layer-masks survives. Wallgen applies
+// the final cut mask downstream.
+function discardLayerMasksDeep(doc, layers) {
+    for (var i = 0; i < layers.length; i++) {
+        var L = layers[i];
+        if (!L.visible) continue;
+        try {
+            doc.activeLayer = L;
+            discardActiveLayerMask();
+        } catch (e) {}
+        if (L.typename === "LayerSet") {
+            discardLayerMasksDeep(doc, L.layers);
+        }
+    }
+}
+
 // Walk layer tree, hide every layer (groups + leaves). Background layers
 // can't be hidden — they're caught by the try/catch and rely on the doc
 // already being unlocked upstream.
