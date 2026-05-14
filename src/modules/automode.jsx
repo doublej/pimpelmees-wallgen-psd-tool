@@ -1,11 +1,11 @@
 // automode.jsx — Batch (silent) cirkel-flow runner
 //
-// Designer picks folder + shape + layout ONCE; every PSD walks through
-// the cirkel pipeline without dialogs. Files that need a human decision
-// are skipped and listed in automode_log.txt + an end-of-run alert.
+// Designer picks folder + shape + layout ONCE; every PSD/PSB walks
+// through the cirkel pipeline without dialogs. Files that need a human
+// decision are skipped and listed in automode_log.txt + an end-of-run alert.
 
 function automodeFolder() {
-    var folder = Folder.selectDialog("Kies map met cirkel-PSDs");
+    var folder = Folder.selectDialog("Kies map met cirkel-PSD/PSBs");
     if (!folder) return;
 
     var shape = showShapePickerDialog();
@@ -22,9 +22,9 @@ function automodeFolder() {
     }
     var bleedMm = (shape === "MS") ? BLEED_MS : BLEED_BC;
 
-    var psdFiles = folder.getFiles(automodeIsPsd);
+    var psdFiles = folder.getFiles(automodeIsPsdOrPsb);
     if (!psdFiles || psdFiles.length === 0) {
-        alert("Geen PSD-bestanden gevonden in:\n" + folder.fsName);
+        alert("Geen PSD/PSB-bestanden gevonden in:\n" + folder.fsName);
         return;
     }
 
@@ -50,22 +50,18 @@ function automodeFolder() {
         + "\nLog: automode_log.txt");
 }
 
-function automodeIsPsd(f) {
+function automodeIsPsdOrPsb(f) {
     if (f instanceof Folder) return false;
-    return /\.psd$/i.test(f.name);
+    return /\.(psd|psb)$/i.test(f.name);
 }
 
-// Open + duplicate + dispatch. Always closes both docs on exit. Returns
-// {ok: true, savedCount: N} or {ok: false, reason: "..."}.
+// Open + dispatch + always close without saving. No duplicate of the source
+// — the original on disk is never written, so working in place is safe.
 function automodeProcessOne(psdFile, opts) {
-    var originalDoc = null;
     var working = null;
     var result;
     try {
-        originalDoc = app.open(psdFile);
-        working = originalDoc.duplicate(
-            psdFile.name.replace(/\.[^.]+$/, "") + " (cirkel werkkopie)"
-        );
+        working = app.open(psdFile);
         result = automodeRunWorking(working, psdFile, opts);
     } catch (e) {
         result = { ok: false, reason: "fout: " + e.message };
@@ -73,52 +69,76 @@ function automodeProcessOne(psdFile, opts) {
     if (working) {
         try { working.close(SaveOptions.DONOTSAVECHANGES); } catch (e1) {}
     }
-    if (originalDoc) {
-        try { originalDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) {}
-    }
     return result;
 }
 
-// Silent equivalent of cirkelFlow's per-doc body. Every prompt in the
-// interactive flow becomes either an auto-action (Duotone → Grayscale,
-// non-FOGRA39 CMYK → convert, mask candidates → hide) or a skip.
+// Silent equivalent of cirkelFlow's per-doc body. Pipeline (efficiency
+// order — mask removal first so subsequent flatten / resize / per-iter
+// duplicates work on a slimmer doc):
+//   1. detect mask + hide
+//   2. delete all hidden layers
+//   3. discard layer masks on remaining
+//   4. mode finishing (profile / FOGRA39 convert) — deferred so detection
+//      and white-sample checks run unaffected by color remap
+//   5. flatten
+//   6. exportTiffSet
+// Duotone is the exception: changeMode flattens the doc, so its conversion
+// must run before mask detection — those files lose per-layer detection.
 function automodeRunWorking(working, psdFile, opts) {
-    if (working.mode === DocumentMode.DUOTONE
-        || working.mode === DocumentMode.GRAYSCALE) {
+    var mode = working.mode;
+
+    if (mode !== DocumentMode.DUOTONE
+        && mode !== DocumentMode.GRAYSCALE
+        && mode !== DocumentMode.CMYK) {
+        return { ok: false, reason: "mode niet ondersteund: " + getColorModeName(mode) };
+    }
+
+    if (mode === DocumentMode.CMYK) {
+        var iccCheck = checkIccProfile(working);
+        if (iccCheck && iccCheck.wrongMode) {
+            return { ok: false, reason: "ICC verkeerde mode: " + iccCheck.profile };
+        }
+    }
+
+    if (mode === DocumentMode.DUOTONE) {
         convertDuotoneToGrayscale(working);
-    } else if (working.mode === DocumentMode.CMYK) {
-        var iccIssue = checkIccProfile(working);
-        if (iccIssue && iccIssue.wrongMode) {
-            return { ok: false, reason: "ICC verkeerde mode: " + iccIssue.profile };
-        }
-        if (iccIssue) {
-            convertToFogra39(working);
-        }
-    } else {
-        return {
-            ok: false,
-            reason: "mode niet ondersteund: " + getColorModeName(working.mode)
-        };
     }
 
     unlockBackground(working);
     app.activeDocument = working;
 
-    var detection = detectCircle(working);
-    if (!detection) {
-        return { ok: false, reason: "geen cirkel gedetecteerd" };
+    // Per-layer cover detection — each match carries its own inferred circle.
+    // Largest-radius match drives the export Ø. Duotone is post-flatten so
+    // detection won't find anything; fall back to detectCircle there.
+    var detection = null;
+    if (mode !== DocumentMode.DUOTONE && working.layers.length > 1) {
+        var maskCandidates = detectMaskLayers(working);
+        if (maskCandidates && maskCandidates.length > 0) {
+            maskCandidates.sort(function (a, b) { return b.circle.r_px - a.circle.r_px; });
+            detection = maskCandidates[0].circle;
+            for (var mi = 0; mi < maskCandidates.length; mi++) {
+                try { maskCandidates[mi].layer.visible = false; } catch (e) {}
+            }
+        }
+        removeHiddenLayersDeep(working, working.layers);
+        discardLayerMasksDeep(working, working.layers);
     }
-    var diameterPx = detection.diameter_px;
+    if (!detection) {
+        detection = detectCircle(working);
+    }
+    if (!detection) {
+        return { ok: false, reason: "geen cirkel/cover gedetecteerd" };
+    }
 
-    var maskCandidates = detectFrameMaskLayers(working, detection);
-    if (maskCandidates && maskCandidates.length > 0) {
-        for (var mi = 0; mi < maskCandidates.length; mi++) {
-            try { maskCandidates[mi].layer.visible = false; } catch (e) {}
+    if (mode === DocumentMode.GRAYSCALE) {
+        assignGrayGamma(working);
+    } else if (mode === DocumentMode.CMYK) {
+        var iccCheck2 = checkIccProfile(working);
+        if (iccCheck2 && !iccCheck2.wrongMode) {
+            convertToFogra39(working);
         }
     }
 
-    // flatten() handles single-visible-layer case (mergeVisible errors
-    // with <2 visible). Mirrors cirkelFlow().
     try { working.flatten(); } catch (e) {}
 
     var abbreviation = inferAbbreviation(psdFile.name);
@@ -131,11 +151,186 @@ function automodeRunWorking(working, psdFile, opts) {
         shape: opts.shape,
         abbreviation: abbreviation,
         outputDir: outputDir,
-        detection: { diameter_px: diameterPx },
+        detection: { diameter_px: detection.diameter_px },
         bleedMm: opts.bleedMm
     });
 
     return { ok: true, savedCount: saved.length };
+}
+
+// Single-file debug runner. Pauses between every action with a dialog
+// showing what just happened + current layer visibility tree. Pick "Stop"
+// at any pause to bail. Uses BC + largest catalog Ø to keep it to one TIFF.
+function stepperFlow() {
+    var f = File.openDialog("Stepper — selecteer PSD/PSB", "*.psd;*.psb");
+    if (!f) return;
+
+    var shape = "BC";
+    var targetMm = BC_DIAMETERS_MM[BC_DIAMETERS_MM.length - 1];
+    var bleedMm = BLEED_BC;
+
+    var working = null;
+    var iter = null;
+
+    try {
+        working = app.open(f);
+        if (!pauseStep("1. Source opened (working in place — no duplicate)",
+            "File: " + f.name + "\nMode: " + getColorModeName(working.mode),
+            dumpLayerVisibility(working.layers, ""))) return;
+
+        var mode = working.mode;
+        if (mode !== DocumentMode.DUOTONE && mode !== DocumentMode.GRAYSCALE && mode !== DocumentMode.CMYK) {
+            alert("Mode niet ondersteund: " + getColorModeName(mode));
+            return;
+        }
+        if (mode === DocumentMode.CMYK) {
+            var iccCheck = checkIccProfile(working);
+            if (iccCheck && iccCheck.wrongMode) {
+                alert("ICC verkeerde mode: " + iccCheck.profile);
+                return;
+            }
+        }
+        if (mode === DocumentMode.DUOTONE) {
+            convertDuotoneToGrayscale(working);
+        }
+        if (!pauseStep("2. Mode validated (conversion deferred to step 8)",
+            "Mode: " + getColorModeName(working.mode) + "\nProfile: " + (working.colorProfileName || "None"),
+            dumpLayerVisibility(working.layers, ""))) return;
+
+        unlockBackground(working);
+        app.activeDocument = working;
+        if (!pauseStep("3. Background unlocked", "", dumpLayerVisibility(working.layers, ""))) return;
+
+        var maskCandidates = detectMaskLayers(working);
+        var diag = (maskCandidates && maskCandidates.diagnostic) ? maskCandidates.diagnostic : [];
+        var candMsg = "Found " + (maskCandidates ? maskCandidates.length : 0) + " cover candidate(s).";
+        if (maskCandidates && maskCandidates.length > 0) {
+            candMsg += "\nCandidates (largest first):";
+            maskCandidates.sort(function (a, b) { return b.circle.r_px - a.circle.r_px; });
+            for (var ci = 0; ci < maskCandidates.length; ci++) {
+                var c = maskCandidates[ci];
+                candMsg += "\n  ✓ " + c.path + "  Ø=" + Math.round(c.circle.diameter_px) + "px";
+            }
+        }
+        var diagDump = "Per-leaf detection result (" + diag.length + " visible leaves checked):\n";
+        for (var di = 0; di < diag.length; di++) {
+            var e = diag[di];
+            diagDump += (e.passed ? "[PASS] " : "[skip] ")
+                + "[" + e.kind + "] " + e.path
+                + (e.reason ? "  — " + e.reason : "") + "\n";
+        }
+        if (!pauseStep("4. detectMaskLayers", candMsg, diagDump)) return;
+
+        var detection = (maskCandidates && maskCandidates.length > 0)
+            ? maskCandidates[0].circle : null;
+        if (!detection) detection = detectCircle(working);
+        if (!detection) {
+            alert("Geen cirkel/cover gedetecteerd — stoppen.");
+            return;
+        }
+        if (!pauseStep("5. Circle inferred",
+            "Doc: " + Math.round(working.width.as("px")) + " × " + Math.round(working.height.as("px")) + " px @ " + Math.round(working.resolution) + " DPI"
+            + "\nSource: " + (detection.source || "auto")
+            + "\nØ=" + Math.round(detection.diameter_px) + "px  (" + detection.diameter_mm.toFixed(1) + " mm)"
+            + "\ncx=" + Math.round(detection.cx_px) + "  cy=" + Math.round(detection.cy_px),
+            dumpLayerVisibility(working.layers, ""))) return;
+
+        var maskThumbnails = renderMaskCandidateThumbnails(working, maskCandidates);
+        var abbreviation = inferAbbreviation(f.name);
+        var masterDir = f.parent.fsName;
+        var masterBase = f.name.replace(/\.[^.]+$/, "");
+        var outputDir = masterDir + "/" + masterBase + "_stepper";
+
+        var confirm = showDemoMaskConfirmDialog({
+            shape: shape,
+            bleedMm: bleedMm,
+            abbreviation: abbreviation,
+            diameterMmList: [targetMm],
+            outputDir: outputDir,
+            detection: detection,
+            maskCandidates: maskCandidates,
+            maskThumbnails: maskThumbnails
+        });
+        if (!confirm) return;
+        abbreviation = confirm.abbreviation || abbreviation;
+        var hideMsg = "User chose to hide " + (confirm.hideLayers ? confirm.hideLayers.length : 0) + " layer(s).";
+        if (!pauseStep("6. Mask confirm dialog", hideMsg,
+            dumpLayerVisibility(working.layers, ""))) return;
+
+        if (confirm.hideLayers && confirm.hideLayers.length > 0) {
+            for (var mi = 0; mi < confirm.hideLayers.length; mi++) {
+                var hideName = "";
+                try { hideName = confirm.hideLayers[mi].name; } catch (eN) {}
+                try { confirm.hideLayers[mi].visible = false; } catch (e) {}
+                if (!pauseStep("7." + (mi + 1) + " Layer hidden",
+                    "Hidden: " + hideName,
+                    dumpLayerVisibility(working.layers, ""))) return;
+            }
+        }
+
+        removeHiddenLayersDeep(working, working.layers);
+        if (!pauseStep("7b. Hidden layers removed",
+            "All hidden layers (masks + artist-hidden) deleted.",
+            dumpLayerVisibility(working.layers, ""))) return;
+
+        discardLayerMasksDeep(working, working.layers);
+        if (!pauseStep("7c. Layer masks discarded",
+            "discardLayerMasksDeep ran on all visible layers/groups.",
+            dumpLayerVisibility(working.layers, ""))) return;
+
+        if (mode === DocumentMode.GRAYSCALE) {
+            assignGrayGamma(working);
+        } else if (mode === DocumentMode.CMYK) {
+            var iccCheck2 = checkIccProfile(working);
+            if (iccCheck2 && !iccCheck2.wrongMode) {
+                convertToFogra39(working);
+            }
+        }
+        if (!pauseStep("8. Profile finishing",
+            "Mode: " + getColorModeName(working.mode) + "  Profile: " + (working.colorProfileName || "None"),
+            dumpLayerVisibility(working.layers, ""))) return;
+
+        try { working.flatten(); } catch (e) {}
+        if (!pauseStep("9. working.flatten()",
+            "Layers after flatten: " + working.layers.length,
+            dumpLayerVisibility(working.layers, ""))) return;
+
+        var finalMm = targetMm + 2 * bleedMm;
+        var outDir = new Folder(outputDir);
+        if (!outDir.exists) outDir.create();
+
+        iter = working.duplicate(abbreviation + "_iter_" + targetMm);
+        if (!pauseStep("10. iter duplicated (only the export copy — not the source)",
+            "iter from flattened working.",
+            dumpLayerVisibility(iter.layers, ""))) return;
+
+        resizeContentToDiameter(iter, detection.diameter_px, finalMm);
+        if (!pauseStep("11. resizeContentToDiameter",
+            "Scaled so detected Ø → " + finalMm + " mm.",
+            dumpLayerVisibility(iter.layers, ""))) return;
+
+        fitCanvasToFinal(iter, finalMm);
+        if (!pauseStep("12. fitCanvasToFinal",
+            "Canvas: " + finalMm + " × " + finalMm + " mm (square).",
+            dumpLayerVisibility(iter.layers, ""))) return;
+
+        assignTargetProfile(iter);
+        if (!pauseStep("13. assignTargetProfile",
+            "Profile: " + (iter.colorProfileName || "None"),
+            dumpLayerVisibility(iter.layers, ""))) return;
+
+        var fname = abbreviation + "_" + shape + "_" + padZero4(targetMm) + ".tif";
+        var outFile = new File(outDir.fsName + "/" + fname);
+        saveTiff(iter, outFile);
+        pauseStep("14. TIFF saved",
+            "Saved: " + outFile.fsName,
+            dumpLayerVisibility(iter.layers, ""));
+    } catch (e) {
+        alert("Stepper fout: " + e.message);
+    }
+
+    if (iter) try { iter.close(SaveOptions.DONOTSAVECHANGES); } catch (e1) {}
+    if (working) try { working.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) {}
 }
 
 function writeAutomodeLog(folder, results) {

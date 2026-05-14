@@ -88,43 +88,61 @@ function cirkelFlow() {
     }
     var bleedMm = (shape === "MS") ? BLEED_MS : BLEED_BC;
 
-    var working = originalDoc.duplicate(
-        psdFile.name.replace(/\.[^.]+$/, "") + " (cirkel werkkopie)"
-    );
+    // Work in place on the picked doc. Original on disk is never written
+    // (we close with DONOTSAVECHANGES) so a duplicate just costs time.
+    var working = originalDoc;
 
     try {
-        if (working.mode === DocumentMode.DUOTONE) {
-            if (!showDuotoneNotice()) {
-                working.close(SaveOptions.DONOTSAVECHANGES);
-                return;
-            }
-            convertDuotoneToGrayscale(working);
-        } else if (working.mode === DocumentMode.GRAYSCALE) {
-            convertDuotoneToGrayscale(working);
-        } else if (working.mode === DocumentMode.CMYK) {
-            // Collage path: keep full colour, ensure FOGRA39 numerically.
-            var iccIssue = checkIccProfile(working);
-            if (iccIssue && !iccIssue.wrongMode) {
-                if (!showCmykProfileNotice(iccIssue.profile)) {
-                    working.close(SaveOptions.DONOTSAVECHANGES);
-                    return;
-                }
-                convertToFogra39(working);
-            }
-        } else {
+        var mode = working.mode;
+        if (mode !== DocumentMode.DUOTONE
+            && mode !== DocumentMode.GRAYSCALE
+            && mode !== DocumentMode.CMYK) {
             alert("Dit bestand is niet Duotone, Grijswaarden of CMYK ("
-                + getColorModeName(working.mode)
+                + getColorModeName(mode)
                 + ").\nConverteer eerst naar Grayscale, Duotone of CMYK en probeer opnieuw.");
             working.close(SaveOptions.DONOTSAVECHANGES);
             return;
         }
 
+        var cmykIssueAtStart = null;
+        if (mode === DocumentMode.CMYK) {
+            cmykIssueAtStart = checkIccProfile(working);
+            if (cmykIssueAtStart && cmykIssueAtStart.wrongMode) {
+                alert("ICC verkeerde mode: " + cmykIssueAtStart.profile);
+                working.close(SaveOptions.DONOTSAVECHANGES);
+                return;
+            }
+            if (cmykIssueAtStart) {
+                if (!showCmykProfileNotice(cmykIssueAtStart.profile)) {
+                    working.close(SaveOptions.DONOTSAVECHANGES);
+                    return;
+                }
+            }
+        }
+
+        // Duotone changeMode flattens the doc, so the conversion must run
+        // before mask detection (those files lose per-layer detection).
+        if (mode === DocumentMode.DUOTONE) {
+            if (!showDuotoneNotice()) {
+                working.close(SaveOptions.DONOTSAVECHANGES);
+                return;
+            }
+            convertDuotoneToGrayscale(working);
+        }
+
         unlockBackground(working);
         app.activeDocument = working;
 
-        // Detection runs on the layered composite — masks still active so
-        // the detected circle equals the artist's intended cut Ø.
-        var detection = detectCircle(working);
+        // Per-layer cover detection — each candidate carries its own
+        // inferred circle. Largest cover defines the export Ø.
+        var maskCandidates = detectMaskLayers(working);
+        var detection = null;
+        if (maskCandidates && maskCandidates.length > 0) {
+            maskCandidates.sort(function (a, b) { return b.circle.r_px - a.circle.r_px; });
+            detection = maskCandidates[0].circle;
+        } else {
+            detection = detectCircle(working);
+        }
         var diameterPx;
         if (!detection) {
             var fallbackMm = promptManualDiameter(shape);
@@ -142,7 +160,6 @@ function cirkelFlow() {
             diameterPx = detection.diameter_px;
         }
 
-        var maskCandidates = detectFrameMaskLayers(working, detection);
         var maskThumbnails = renderMaskCandidateThumbnails(working, maskCandidates);
 
         var abbreviation = inferAbbreviation(psdFile.name);
@@ -171,6 +188,22 @@ function cirkelFlow() {
             for (var hi = 0; hi < confirm.hideLayers.length; hi++) {
                 try { confirm.hideLayers[hi].visible = false; } catch (e) {}
             }
+        }
+
+        // Delete every hidden layer (mask candidates + anything the artist
+        // hid). Shrinks the doc before flatten/resize/per-iter duplicate.
+        removeHiddenLayersDeep(working, working.layers);
+
+        // Discard circular layer-masks on remaining visible design layers/groups
+        // so flatten doesn't crop content to the circle. Wallgen masks downstream.
+        discardLayerMasksDeep(working, working.layers);
+
+        // Deferred mode finishing — runs after mask removal so detection +
+        // white-sample checks weren't affected by color remap.
+        if (mode === DocumentMode.GRAYSCALE) {
+            assignGrayGamma(working);
+        } else if (mode === DocumentMode.CMYK && cmykIssueAtStart) {
+            convertToFogra39(working);
         }
 
         // Now flatten — masks (whatever state the user left them in) bake in.
