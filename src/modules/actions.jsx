@@ -242,6 +242,129 @@ function exportTiffSet(diameterMmList, opts) {
     return savedNames;
 }
 
+// --- Shared cirkel pipeline helpers ---
+// Every flow (cirkelFlow, automodeRunWorking, stepperFlow) calls these in
+// the same order so behavior cannot drift between interactive and silent
+// runs. Each helper accepts an optional events array for log capture.
+
+// Per-layer cover detection + composite-fallback. Returns
+// { detection, maskCandidates }. Sorts candidates by descending Ø so the
+// largest one drives export Ø. Always runs detectMaskLayers regardless of
+// layer count — single-layer docs simply yield 0 candidates and fall
+// through to detectCircle.
+function selectCirkelDetection(working, events) {
+    var maskCandidates = detectMaskLayers(working);
+    var candCount = (maskCandidates && maskCandidates.length) || 0;
+    ev_section(events, "detect mask layers");
+    ev_kv(events, "candidates", String(candCount));
+    if (candCount > 0) {
+        maskCandidates.sort(function (a, b) { return b.circle.r_px - a.circle.r_px; });
+        for (var i = 0; i < maskCandidates.length; i++) {
+            var pName = "";
+            try { pName = maskCandidates[i].path || maskCandidates[i].layer.name; } catch (eN) {}
+            ev_kv(events, "  candidate", pName + "  Ø=" + Math.round(maskCandidates[i].circle.diameter_px) + " px");
+        }
+    } else if (events) {
+        // Surface why each leaf was rejected so designers can spot
+        // detection misfires instead of guessing.
+        var diag = (maskCandidates && maskCandidates.diagnostic) || [];
+        for (var d = 0; d < diag.length; d++) {
+            var de = diag[d];
+            ev_kv(events, "  reject", "[" + de.kind + "] " + de.path + " — " + (de.reason || "unknown"));
+        }
+    }
+
+    var detection = candCount > 0 ? maskCandidates[0].circle : null;
+    if (!detection) {
+        detection = detectCircle(working);
+        if (detection) {
+            ev_section(events, "circle (composite fallback)");
+            ev_kv(events, "diameter", Math.round(detection.diameter_px) + " px · " + detection.diameter_mm.toFixed(1) + " mm");
+        }
+    } else {
+        ev_section(events, "circle (largest mask)");
+        ev_kv(events, "diameter", Math.round(detection.diameter_px) + " px · " + detection.diameter_mm.toFixed(1) + " mm");
+    }
+
+    return { detection: detection, maskCandidates: maskCandidates };
+}
+
+// Hide the user-or-auto-selected cover layers, then prune all hidden
+// layers and discard any remaining layer masks. Runs identically for all
+// flows so a "passed mask handling" check in one flow guarantees the
+// others.
+function applyCoverCleanup(working, hideLayers, events) {
+    ev_section(events, "cover cleanup");
+    if (hideLayers && hideLayers.length > 0) {
+        for (var i = 0; i < hideLayers.length; i++) {
+            var name = "";
+            try { name = hideLayers[i].name; } catch (eN) {}
+            ev_kv(events, "hide", name);
+            try { hideLayers[i].visible = false; } catch (e) {}
+        }
+    } else {
+        ev_kv(events, "hide", "(none)");
+    }
+    var before = countLayersDeep(working.layers);
+    removeHiddenLayersDeep(working, working.layers);
+    ev_kv(events, "removeHidden", before + " → " + countLayersDeep(working.layers) + " layers");
+    discardLayerMasksDeep(working, working.layers);
+    ev_kv(events, "discardMasks", "done");
+}
+
+// Deferred mode finishing: assign Gray Gamma 1.0 (grayscale) or convert
+// to FOGRA39 (CMYK with non-FOGRA39 source). originalMode is the mode
+// captured at file open — duotone files were already converted to
+// grayscale upstream, so they get the grayscale branch here.
+function applyModeFinishing(working, originalMode, events) {
+    if (originalMode === DocumentMode.GRAYSCALE
+        || originalMode === DocumentMode.DUOTONE) {
+        ev_section(events, "finish (grayscale)");
+        ev_kv(events, "from", iccSnapshot(working));
+        assignGrayGamma(working);
+        ev_kv(events, "assign", "→ \"" + NEW_DOC_GRAY_PROFILE + "\"");
+        ev_kv(events, "to", iccSnapshot(working));
+    } else if (originalMode === DocumentMode.CMYK) {
+        ev_section(events, "finish (CMYK)");
+        ev_kv(events, "state", iccSnapshot(working));
+        var icc = checkIccProfile(working);
+        if (icc && !icc.wrongMode) {
+            var from = working.colorProfileName || "None";
+            ev_kv(events, "convert", "\"" + from + "\" → \"" + NEW_DOC_CMYK_PROFILE + "\"");
+            ev_kv(events, "params", "intent=relativeColorimetric · BPC=true · dither=true");
+            convertToFogra39(working);
+            ev_kv(events, "to", iccSnapshot(working));
+        } else {
+            ev_kv(events, "convert", "skipped — already FOGRA39");
+        }
+    }
+}
+
+// Flatten the working doc; swallow errors but log them. Single point of
+// flatten so per-flow drift can't reintroduce mismatched bake-in order.
+function applyFlatten(working, events) {
+    ev_section(events, "flatten");
+    try {
+        working.flatten();
+        ev_kv(events, "result", working.layers.length + " layer" + (working.layers.length === 1 ? "" : "s"));
+    } catch (e) {
+        ev_error(events, "flatten failed: " + e.message);
+    }
+}
+
+// Counts every layer in the tree (groups + leaves). Used purely for log
+// before/after diffs so designers can see what removeHiddenLayersDeep ate.
+function countLayersDeep(layers) {
+    var n = 0;
+    for (var i = 0; i < layers.length; i++) {
+        n++;
+        if (layers[i].typename === "LayerSet") {
+            n += countLayersDeep(layers[i].layers);
+        }
+    }
+    return n;
+}
+
 // Walk the layer tree and delete every hidden layer (and any group that
 // becomes empty as a result). Iterates in reverse so removal doesn't
 // invalidate indices. Run pre-flatten to shrink the doc before resizes

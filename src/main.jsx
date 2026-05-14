@@ -133,16 +133,13 @@ function cirkelFlow() {
         unlockBackground(working);
         app.activeDocument = working;
 
-        // Per-layer cover detection — each candidate carries its own
-        // inferred circle. Largest cover defines the export Ø.
-        var maskCandidates = detectMaskLayers(working);
-        var detection = null;
-        if (maskCandidates && maskCandidates.length > 0) {
-            maskCandidates.sort(function (a, b) { return b.circle.r_px - a.circle.r_px; });
-            detection = maskCandidates[0].circle;
-        } else {
-            detection = detectCircle(working);
-        }
+        // Canonical pipeline (shared with automodeRunWorking + stepperFlow).
+        // cirkelFlow's only divergence: the user picks which candidates to
+        // hide via showDemoMaskConfirmDialog, plus a manual-diameter
+        // fallback when detection finds nothing.
+        var sel = selectCirkelDetection(working, null);
+        var detection = sel.detection;
+        var maskCandidates = sel.maskCandidates;
         var diameterPx;
         if (!detection) {
             var fallbackMm = promptManualDiameter(shape);
@@ -184,32 +181,9 @@ function cirkelFlow() {
         });
         if (!confirm) { working.close(SaveOptions.DONOTSAVECHANGES); return; }
 
-        if (confirm.hideLayers && confirm.hideLayers.length > 0) {
-            for (var hi = 0; hi < confirm.hideLayers.length; hi++) {
-                try { confirm.hideLayers[hi].visible = false; } catch (e) {}
-            }
-        }
-
-        // Delete every hidden layer (mask candidates + anything the artist
-        // hid). Shrinks the doc before flatten/resize/per-iter duplicate.
-        removeHiddenLayersDeep(working, working.layers);
-
-        // Discard circular layer-masks on remaining visible design layers/groups
-        // so flatten doesn't crop content to the circle. Wallgen masks downstream.
-        discardLayerMasksDeep(working, working.layers);
-
-        // Deferred mode finishing — runs after mask removal so detection +
-        // white-sample checks weren't affected by color remap.
-        if (mode === DocumentMode.GRAYSCALE) {
-            assignGrayGamma(working);
-        } else if (mode === DocumentMode.CMYK && cmykIssueAtStart) {
-            convertToFogra39(working);
-        }
-
-        // Now flatten — masks (whatever state the user left them in) bake in.
-        // flatten() over mergeVisibleLayers(): handles single-visible-layer case
-        // (Photoshop errors "command not available" on mergeVisible with <2 visible).
-        try { working.flatten(); } catch (e) {}
+        applyCoverCleanup(working, confirm.hideLayers, null);
+        applyModeFinishing(working, mode, null);
+        applyFlatten(working, null);
 
         var saved = exportTiffSet(diameterList, {
             workingDoc: working,

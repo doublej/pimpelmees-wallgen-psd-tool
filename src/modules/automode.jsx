@@ -130,74 +130,25 @@ function automodeRunWorking(working, psdFile, opts, events) {
     unlockBackground(working);
     app.activeDocument = working;
 
-    // Per-layer cover detection — each match carries its own inferred circle.
-    // Largest-radius match drives the export Ø. Duotone is post-flatten so
-    // detection won't find anything; fall back to detectCircle there.
-    var detection = null;
-    if (mode !== DocumentMode.DUOTONE && working.layers.length > 1) {
-        var maskCandidates = detectMaskLayers(working);
-        var candCount = (maskCandidates && maskCandidates.length) || 0;
-        ev_section(events, "detect mask layers");
-        ev_kv(events, "candidates", String(candCount));
-        if (candCount > 0) {
-            maskCandidates.sort(function (a, b) { return b.circle.r_px - a.circle.r_px; });
-            detection = maskCandidates[0].circle;
-            for (var mi = 0; mi < maskCandidates.length; mi++) {
-                var pName = "";
-                try { pName = maskCandidates[mi].path || maskCandidates[mi].layer.name; } catch (eN) {}
-                ev_kv(events, "  hide", pName + "  Ø=" + Math.round(maskCandidates[mi].circle.diameter_px) + " px");
-                try { maskCandidates[mi].layer.visible = false; } catch (e) {}
-            }
-        }
-        var beforeCount = countLayersDeep(working.layers);
-        removeHiddenLayersDeep(working, working.layers);
-        ev_kv(events, "removeHidden", beforeCount + " → " + countLayersDeep(working.layers) + " layers");
-        discardLayerMasksDeep(working, working.layers);
-        ev_kv(events, "discardMasks", "done");
-    }
-
-    ev_section(events, "circle");
-    if (!detection) {
-        detection = detectCircle(working);
-        if (detection) {
-            ev_kv(events, "source", "composite fallback (no mask candidates)");
-        }
-    } else {
-        ev_kv(events, "source", "largest mask candidate");
-    }
+    // Canonical pipeline (shared with cirkelFlow + stepperFlow):
+    //   detect → cover-cleanup (auto-hide all candidates here) → mode-finish → flatten.
+    var sel = selectCirkelDetection(working, events);
+    var detection = sel.detection;
+    var maskCandidates = sel.maskCandidates;
     if (!detection) {
         ev_kv(events, "result", "none — reject");
         return { ok: false, reason: "geen cirkel/cover gedetecteerd" };
     }
-    ev_kv(events, "diameter", Math.round(detection.diameter_px) + " px · " + detection.diameter_mm.toFixed(1) + " mm");
 
-    if (mode === DocumentMode.GRAYSCALE) {
-        ev_section(events, "finish (grayscale)");
-        ev_kv(events, "from", iccSnapshot(working));
-        assignGrayGamma(working);
-        ev_kv(events, "assign", "→ \"" + NEW_DOC_GRAY_PROFILE + "\"");
-        ev_kv(events, "to", iccSnapshot(working));
-    } else if (mode === DocumentMode.CMYK) {
-        var iccCheck2 = checkIccProfile(working);
-        ev_section(events, "finish (CMYK)");
-        ev_kv(events, "state", iccSnapshot(working));
-        if (iccCheck2 && !iccCheck2.wrongMode) {
-            ev_kv(events, "convert", "\"" + (working.colorProfileName || "None") + "\" → \"" + NEW_DOC_CMYK_PROFILE + "\"");
-            ev_kv(events, "params", "intent=relativeColorimetric · BPC=true · dither=true");
-            convertToFogra39(working);
-            ev_kv(events, "to", iccSnapshot(working));
-        } else {
-            ev_kv(events, "convert", "skipped — already FOGRA39");
+    var hideLayers = [];
+    if (maskCandidates && maskCandidates.length > 0) {
+        for (var mi = 0; mi < maskCandidates.length; mi++) {
+            hideLayers.push(maskCandidates[mi].layer);
         }
     }
-
-    ev_section(events, "flatten");
-    try {
-        working.flatten();
-        ev_kv(events, "result", working.layers.length + " layer" + (working.layers.length === 1 ? "" : "s"));
-    } catch (e) {
-        ev_error(events, "flatten failed: " + e.message);
-    }
+    applyCoverCleanup(working, hideLayers, events);
+    applyModeFinishing(working, mode, events);
+    applyFlatten(working, events);
 
     var abbreviation = inferAbbreviation(psdFile.name);
     var masterDir = psdFile.parent.fsName;
@@ -221,19 +172,6 @@ function automodeRunWorking(working, psdFile, opts, events) {
     });
 
     return { ok: true, savedCount: saved.length };
-}
-
-// Counts every layer in the tree (groups + leaves). Used purely for log
-// before/after diffs so designers can see what removeHiddenLayersDeep ate.
-function countLayersDeep(layers) {
-    var n = 0;
-    for (var i = 0; i < layers.length; i++) {
-        n++;
-        if (layers[i].typename === "LayerSet") {
-            n += countLayersDeep(layers[i].layers);
-        }
-    }
-    return n;
 }
 
 // Single-file debug runner. Pauses between every action with a dialog
@@ -279,12 +217,17 @@ function stepperFlow() {
         app.activeDocument = working;
         if (!pauseStep("3. Background unlocked", "", dumpLayerVisibility(working.layers, ""))) return;
 
-        var maskCandidates = detectMaskLayers(working);
+        // Same pipeline as cirkelFlow + automodeRunWorking — pauseStep
+        // dialogs wrap each helper call so the designer can inspect state
+        // between actions. Detection diagnostic is dumped from the
+        // candidates' .diagnostic field for the per-leaf rejection trail.
+        var sel = selectCirkelDetection(working, null);
+        var maskCandidates = sel.maskCandidates;
+        var detection = sel.detection;
         var diag = (maskCandidates && maskCandidates.diagnostic) ? maskCandidates.diagnostic : [];
         var candMsg = "Found " + (maskCandidates ? maskCandidates.length : 0) + " cover candidate(s).";
         if (maskCandidates && maskCandidates.length > 0) {
             candMsg += "\nCandidates (largest first):";
-            maskCandidates.sort(function (a, b) { return b.circle.r_px - a.circle.r_px; });
             for (var ci = 0; ci < maskCandidates.length; ci++) {
                 var c = maskCandidates[ci];
                 candMsg += "\n  ✓ " + c.path + "  Ø=" + Math.round(c.circle.diameter_px) + "px";
@@ -299,9 +242,6 @@ function stepperFlow() {
         }
         if (!pauseStep("4. detectMaskLayers", candMsg, diagDump)) return;
 
-        var detection = (maskCandidates && maskCandidates.length > 0)
-            ? maskCandidates[0].circle : null;
-        if (!detection) detection = detectCircle(working);
         if (!detection) {
             alert("Geen cirkel/cover gedetecteerd — stoppen.");
             return;
@@ -335,40 +275,17 @@ function stepperFlow() {
         if (!pauseStep("6. Mask confirm dialog", hideMsg,
             dumpLayerVisibility(working.layers, ""))) return;
 
-        if (confirm.hideLayers && confirm.hideLayers.length > 0) {
-            for (var mi = 0; mi < confirm.hideLayers.length; mi++) {
-                var hideName = "";
-                try { hideName = confirm.hideLayers[mi].name; } catch (eN) {}
-                try { confirm.hideLayers[mi].visible = false; } catch (e) {}
-                if (!pauseStep("7." + (mi + 1) + " Layer hidden",
-                    "Hidden: " + hideName,
-                    dumpLayerVisibility(working.layers, ""))) return;
-            }
-        }
-
-        removeHiddenLayersDeep(working, working.layers);
-        if (!pauseStep("7b. Hidden layers removed",
-            "All hidden layers (masks + artist-hidden) deleted.",
+        applyCoverCleanup(working, confirm.hideLayers, null);
+        if (!pauseStep("7. Cover cleanup (hide + removeHidden + discardMasks)",
+            "Cover candidates hidden, hidden layers deleted, layer masks discarded.",
             dumpLayerVisibility(working.layers, ""))) return;
 
-        discardLayerMasksDeep(working, working.layers);
-        if (!pauseStep("7c. Layer masks discarded",
-            "discardLayerMasksDeep ran on all visible layers/groups.",
-            dumpLayerVisibility(working.layers, ""))) return;
-
-        if (mode === DocumentMode.GRAYSCALE) {
-            assignGrayGamma(working);
-        } else if (mode === DocumentMode.CMYK) {
-            var iccCheck2 = checkIccProfile(working);
-            if (iccCheck2 && !iccCheck2.wrongMode) {
-                convertToFogra39(working);
-            }
-        }
+        applyModeFinishing(working, mode, null);
         if (!pauseStep("8. Profile finishing",
             "Mode: " + getColorModeName(working.mode) + "  Profile: " + (working.colorProfileName || "None"),
             dumpLayerVisibility(working.layers, ""))) return;
 
-        try { working.flatten(); } catch (e) {}
+        applyFlatten(working, null);
         if (!pauseStep("9. working.flatten()",
             "Layers after flatten: " + working.layers.length,
             dumpLayerVisibility(working.layers, ""))) return;
