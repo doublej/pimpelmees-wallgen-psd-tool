@@ -144,9 +144,9 @@ function detectCircle(doc) {
     };
 }
 
-// Walk doc.layers recursively, collect visible leaf ArtLayers that could
-// be a frame-mask candidate. Skip invisible layers/groups, background, and
-// adjustment/text layers (only NORMAL + SMARTOBJECT pixel layers qualify).
+// Walk doc.layers recursively, collect every visible leaf (non-LayerSet,
+// non-background). Kind filtering happens later so the diagnostic can
+// report each rejection reason. Adjustment layers etc. are excluded later.
 function collectVisibleLeaves(layers, parentPath, out) {
     for (var i = 0; i < layers.length; i++) {
         var L = layers[i];
@@ -157,11 +157,34 @@ function collectVisibleLeaves(layers, parentPath, out) {
             continue;
         }
         if (L.isBackgroundLayer) continue;
-        var k;
-        try { k = L.kind; } catch (e) { continue; }
-        if (k !== LayerKind.NORMAL && k !== LayerKind.SMARTOBJECT) continue;
         out.push({ layer: L, path: thisPath });
     }
+}
+
+function describeLayerKind(k) {
+    if (k === LayerKind.NORMAL) return "NORMAL";
+    if (k === LayerKind.TEXT) return "TEXT";
+    if (k === LayerKind.SOLIDFILL) return "SOLIDFILL";
+    if (k === LayerKind.GRADIENTFILL) return "GRADIENTFILL";
+    if (k === LayerKind.PATTERNFILL) return "PATTERNFILL";
+    if (k === LayerKind.SMARTOBJECT) return "SMARTOBJECT";
+    if (k === LayerKind.LEVELS) return "LEVELS";
+    if (k === LayerKind.CURVES) return "CURVES";
+    if (k === LayerKind.BRIGHTNESSCONTRAST) return "BRIGHTNESSCONTRAST";
+    if (k === LayerKind.HUESATURATION) return "HUESATURATION";
+    if (k === LayerKind.COLORBALANCE) return "COLORBALANCE";
+    if (k === LayerKind.INVERSION) return "INVERSION";
+    if (k === LayerKind.THRESHOLD) return "THRESHOLD";
+    if (k === LayerKind.POSTERIZE) return "POSTERIZE";
+    if (k === LayerKind.BLACKANDWHITE) return "BLACKANDWHITE";
+    if (k === LayerKind.PHOTOFILTER) return "PHOTOFILTER";
+    if (k === LayerKind.COLORLOOKUP) return "COLORLOOKUP";
+    if (k === LayerKind.VIBRANCE) return "VIBRANCE";
+    if (k === LayerKind.CHANNELMIXER) return "CHANNELMIXER";
+    if (k === LayerKind.EXPOSURE) return "EXPOSURE";
+    if (k === LayerKind.LAYER3D) return "LAYER3D";
+    if (k === LayerKind.VIDEO) return "VIDEO";
+    return "other";
 }
 
 function layerCoversDoc(layer, doc, tolPx) {
@@ -234,54 +257,282 @@ function isSelectionEmpty(doc) {
     }
 }
 
-// Find layers that look like a circle-frame mask: full-canvas bounds AND
-// fully transparent inside a centred ellipse at 98% of the detected circle Ø.
-// Returns [{ layer, name, path }, ...]. Empty when no candidates.
-// Restores active layer + clears selection on every exit path.
-function detectFrameMaskLayers(doc, circle) {
+// Count pixels in the current selection by filling a temp alpha channel
+// with white and summing histogram[1..255]. Throws with a sub-step prefix
+// when any underlying AM call fails (so the caller's diagnostic can pin it).
+function measureSelectionPixelArea(doc) {
+    var subStep = "channels.add";
+    var tempCh = null;
+    var prevActiveChannels = null;
+    try {
+        tempCh = doc.channels.add();
+        subStep = "set channel kind";
+        try { tempCh.kind = ChannelType.MASKEDAREA; } catch (eK) {}
+        subStep = "read activeChannels";
+        prevActiveChannels = doc.activeChannels;
+        subStep = "set activeChannels";
+        doc.activeChannels = [tempCh];
+        subStep = "fill selection";
+        var white = new SolidColor();
+        white.rgb.red = 255; white.rgb.green = 255; white.rgb.blue = 255;
+        try { doc.selection.fill(white); } catch (eF) {}
+        subStep = "read histogram";
+        var hist = tempCh.histogram;
+        var total = 0;
+        for (var v = 1; v <= 255; v++) total += hist[v];
+        try { tempCh.remove(); } catch (eR) {}
+        try { doc.activeChannels = prevActiveChannels; } catch (eC) {}
+        return total;
+    } catch (e) {
+        try { if (tempCh) tempCh.remove(); } catch (eR2) {}
+        try { if (prevActiveChannels) doc.activeChannels = prevActiveChannels; } catch (eC2) {}
+        throw new Error("measure[" + subStep + "]: " + e.message);
+    }
+}
+
+// Approximate selection area via bbox. Used as fallback when the histogram
+// path errors. Overestimates for non-rectangular selections, but stable.
+function approxSelectionPixelAreaByBounds(doc) {
+    try {
+        var b = doc.selection.bounds;
+        if (!b) return 0;
+        var bw = b[2].as("px") - b[0].as("px");
+        var bh = b[3].as("px") - b[1].as("px");
+        return Math.round(bw * bh);
+    } catch (e) { return 0; }
+}
+
+// Wraps measureSelectionPixelArea with a bbox fallback. Returns
+// { area, fallback, error } so the caller can surface the path used.
+function measureOrApprox(doc) {
+    try { return { area: measureSelectionPixelArea(doc), fallback: false, error: null }; }
+    catch (e) { return { area: approxSelectionPixelAreaByBounds(doc), fallback: true, error: e.message }; }
+}
+
+// Bounds of the active layer's opaque region (alpha > 0). More reliable
+// than layer.bounds, which for some layers (with masks, smart objects)
+// returns the canvas frame instead of pixel extent. Returns null if the
+// layer is entirely transparent or the load fails.
+function getOpaqueAreaBounds(doc) {
+    try { loadLayerTransparencyAsSelection(doc); } catch (e) { return null; }
+    var b = null;
+    try { b = doc.selection.bounds; } catch (eB) {}
+    try { doc.selection.deselect(); } catch (eD) {}
+    if (!b) return null;
+    return [b[0].as("px"), b[1].as("px"), b[2].as("px"), b[3].as("px")];
+}
+
+// True if the composite color at (x,y) is near-white (within mode tolerances).
+// Used to distinguish "white-cover layers" from design layers that happen to
+// match the circle shape — cover layers paint over the design with white;
+// design layers have any other color.
+function sampleCompositeIsWhite(doc, x, y) {
+    var sampler = null;
+    try { sampler = doc.colorSamplers.add([UnitValue(x, "px"), UnitValue(y, "px")]); }
+    catch (e) { return false; }
+    var c = sampler.color;
+    sampler.remove();
+    try {
+        if (doc.mode === DocumentMode.GRAYSCALE) return c.gray.gray >= 95;
+        if (doc.mode === DocumentMode.CMYK)
+            return c.cmyk.cyan <= 5 && c.cmyk.magenta <= 5
+                && c.cmyk.yellow <= 5 && c.cmyk.black <= 5;
+        if (doc.mode === DocumentMode.RGB)
+            return c.rgb.red >= 240 && c.rgb.green >= 240 && c.rgb.blue >= 240;
+    } catch (eC) {}
+    return false;
+}
+
+// Sample 5 points (center + N/S/E/W at 50% radius) inside the circle. If at
+// least 4 read as near-white in the composite, treat the layer as the
+// white-cover. Assumes the cover is the front-most visible content at these
+// points (which is the case for a layer painted on top of the design).
+function isLayerMostlyWhite(doc, circle) {
+    var pts = [
+        [circle.cx_px, circle.cy_px],
+        [circle.cx_px + circle.r_px * 0.5, circle.cy_px],
+        [circle.cx_px - circle.r_px * 0.5, circle.cy_px],
+        [circle.cx_px, circle.cy_px + circle.r_px * 0.5],
+        [circle.cx_px, circle.cy_px - circle.r_px * 0.5]
+    ];
+    var whiteCount = 0;
+    for (var i = 0; i < pts.length; i++) {
+        if (sampleCompositeIsWhite(doc, pts[i][0], pts[i][1])) whiteCount++;
+    }
+    return { whiteCount: whiteCount, total: pts.length, mostlyWhite: whiteCount >= 4 };
+}
+
+// Returns { passed, ratio, opaqueArea, outerArea }. Measures what fraction
+// of the doc's outer ring (outside the outer-buffered circle) is opaque on
+// the active layer. Frame masks wrap most of the canvas → ratio near 1.0;
+// rim decoration / vignettes only cover a small ring → low ratio.
+function layerOpaqueOutsideCircle(doc, circle) {
+    var bufferedDia = circle.diameter_px * MASK_OUTER_BUFFER;
+    var res = { passed: false, ratio: 0, opaqueArea: 0, outerArea: 0, fallback: false };
+
+    try {
+        selectInnerEllipse(doc, circle.cx_px, circle.cy_px, bufferedDia);
+        doc.selection.invert();
+    } catch (e) { return res; }
+
+    var m1 = measureOrApprox(doc);
+    res.outerArea = m1.area;
+    if (m1.fallback) res.fallback = true;
+    if (res.outerArea <= 0) {
+        try { doc.selection.deselect(); } catch (e1) {}
+        return res;
+    }
+
+    try {
+        selectInnerEllipse(doc, circle.cx_px, circle.cy_px, bufferedDia);
+        doc.selection.invert();
+    } catch (e2) {
+        try { doc.selection.deselect(); } catch (e3) {}
+        return res;
+    }
+
+    var threwEmpty = false;
+    try { intersectSelectionWithLayerTransparency(doc); }
+    catch (e4) { threwEmpty = true; }
+    if (!threwEmpty && !isSelectionEmpty(doc)) {
+        var m2 = measureOrApprox(doc);
+        res.opaqueArea = m2.area;
+        if (m2.fallback) res.fallback = true;
+    }
+    try { doc.selection.deselect(); } catch (e5) {}
+
+    res.ratio = res.opaqueArea / res.outerArea;
+    res.passed = res.ratio >= MASK_OUTER_OPAQUE_RATIO;
+    return res;
+}
+
+// Per-layer cover detection — no global circle dependency. For each visible
+// leaf: check the opaque-area bbox is roughly square + reasonably large +
+// circle-shaped (fill ratio ≈ π/4). Each match carries its own inferred
+// circle, so the caller can pick the largest to drive the export Ø.
+// Returns array of [{ layer, name, path, pattern, circle, bbox }, ...]
+// with a `.diagnostic` parallel list.
+function detectMaskLayers(doc) {
     var result = [];
+    var diagnostic = [];
+    result.diagnostic = diagnostic;
+
     var prevActive = null;
     try { prevActive = doc.activeLayer; } catch (e) {}
 
     try {
         var leaves = [];
         collectVisibleLeaves(doc.layers, "", leaves);
-        if (leaves.length === 0) return result;
 
-        var tolPx = 2;
-        var insetDia = circle.diameter_px * 0.98;
+        var docW = doc.width.as("px"), docH = doc.height.as("px");
+        var minDocDim = Math.min(docW, docH);
+        var dpi = doc.resolution;
 
         for (var i = 0; i < leaves.length; i++) {
             var entry = leaves[i];
             var L = entry.layer;
-            if (!layerCoversDoc(L, doc, tolPx)) continue;
+            var diag = { path: entry.path, name: L.name, kind: "?", passed: false, reason: "" };
+
+            var k;
+            try { k = L.kind; diag.kind = describeLayerKind(k); }
+            catch (eK) { diag.reason = "kind unreadable"; diagnostic.push(diag); continue; }
+
+            var kindOK = (k === LayerKind.NORMAL || k === LayerKind.SMARTOBJECT
+                || k === LayerKind.SOLIDFILL || k === LayerKind.GRADIENTFILL
+                || k === LayerKind.PATTERNFILL);
+            if (!kindOK) {
+                diag.reason = "kind not pixel/fill";
+                diagnostic.push(diag);
+                continue;
+            }
+
+            var step = "init";
             try {
+                step = "set activeLayer";
                 doc.activeLayer = L;
 
-                // Filter out fully-opaque layers (mountain artwork, white
-                // background fills). Without this, Intr against a no-transparency
-                // layer behaves as if the result were empty and produces false
-                // positives.
+                step = "layerHasAnyTransparency";
                 if (!layerHasAnyTransparency(doc)) {
+                    diag.reason = "fully opaque (no transparency signal)";
                     try { doc.selection.deselect(); } catch (e0) {}
+                    diagnostic.push(diag);
                     continue;
                 }
 
-                selectInnerEllipse(doc, circle.cx_px, circle.cy_px, insetDia);
-                var empty = false;
-                try {
-                    intersectSelectionWithLayerTransparency(doc);
-                } catch (intersectErr) {
-                    // Photoshop throws when the intersected result would be empty.
-                    empty = true;
+                step = "getOpaqueAreaBounds";
+                var ob = getOpaqueAreaBounds(doc);
+                if (!ob) {
+                    diag.reason = "no opaque pixels";
+                    diagnostic.push(diag);
+                    continue;
                 }
-                if (!empty) empty = isSelectionEmpty(doc);
-                if (empty) {
-                    result.push({ layer: L, name: L.name, path: entry.path });
+                var ol = ob[0], ot = ob[1], or = ob[2], obot = ob[3];
+                diag.opaqueBounds = [Math.round(ol), Math.round(ot), Math.round(or), Math.round(obot)];
+
+                var w = or - ol, h = obot - ot;
+                if (w <= 0 || h <= 0) {
+                    diag.reason = "zero-size opaque bounds";
+                    diagnostic.push(diag);
+                    continue;
                 }
-                try { doc.selection.deselect(); } catch (e1) {}
+
+                if (w < minDocDim * 0.1) {
+                    diag.reason = "bbox too small (" + Math.round(w) + "×" + Math.round(h) + " px)";
+                    diagnostic.push(diag);
+                    continue;
+                }
+
+                var aspect = w / h;
+                diag.aspect = aspect.toFixed(3);
+                if (aspect < 0.95 || aspect > 1.05) {
+                    diag.reason = "bbox not square (aspect " + diag.aspect + ")";
+                    diagnostic.push(diag);
+                    continue;
+                }
+
+                step = "measure opaque area";
+                loadLayerTransparencyAsSelection(doc);
+                var areaPx = 0;
+                try { areaPx = measureSelectionPixelArea(doc); }
+                catch (eA) { areaPx = approxSelectionPixelAreaByBounds(doc); }
+                try { doc.selection.deselect(); } catch (eD) {}
+
+                var fillRatio = areaPx / (w * h);
+                diag.fillRatio = fillRatio.toFixed(3);
+
+                if (fillRatio < 0.65 || fillRatio > 0.95) {
+                    diag.reason = "fill " + diag.fillRatio + " not circle-like (expect ~0.785)";
+                    diagnostic.push(diag);
+                    continue;
+                }
+
+                var diaPx = Math.min(w, h);
+                var inferredCircle = {
+                    cx_px: (ol + or) / 2,
+                    cy_px: (ot + obot) / 2,
+                    r_px: diaPx / 2,
+                    diameter_px: diaPx,
+                    diameter_mm: diaPx / dpi * 25.4,
+                    source: "cover-bounds"
+                };
+
+                diag.pattern = "cover";
+                diag.passed = true;
+                diag.reason = "PASS — aspect " + diag.aspect + ", fill " + diag.fillRatio
+                    + ", Ø " + Math.round(diaPx) + "px (" + inferredCircle.diameter_mm.toFixed(1) + " mm)";
+                diagnostic.push(diag);
+                result.push({
+                    layer: L,
+                    name: L.name,
+                    path: entry.path,
+                    pattern: "cover",
+                    circle: inferredCircle,
+                    bbox: ob
+                });
             } catch (loopErr) {
+                diag.reason = "exception at step '" + step + "': " + loopErr.message;
                 try { doc.selection.deselect(); } catch (e2) {}
+                diagnostic.push(diag);
             }
         }
     } catch (outerErr) {

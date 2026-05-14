@@ -21,6 +21,14 @@ var BLEED_BC = 10;
 var BLEED_MS = 3;
 var BLEED_ARC = 3;
 var BLEED_DL = 3;
+
+// Frame-mask detection: a layer qualifies only if it's transparent inside
+// the inner buffered circle AND opaque across ≥ MASK_OUTER_OPAQUE_RATIO of
+// the outer ring (outside the outer buffered circle). Buffers forgive
+// antialiased edges around the detected diameter.
+var MASK_INNER_BUFFER = 0.98;
+var MASK_OUTER_BUFFER = 1.02;
+var MASK_OUTER_OPAQUE_RATIO = 0.9;
 var NEW_DOC_GRAY_PROFILE = "Gray Gamma 1.0";
 var NEW_DOC_CMYK_PROFILE = "Coated FOGRA39 (ISO 12647-2:2004)";
 
