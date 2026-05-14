@@ -2,7 +2,7 @@
 
 function pickDocument() {
     if (app.documents.length === 0) {
-        var f = File.openDialog("Selecteer een PSD-bestand", "*.psd");
+        var f = File.openDialog("Selecteer een PSD/PSB-bestand", "*.psd;*.psb");
         if (!f) return null;
         var d = app.open(f);
         return { doc: d, file: f };
@@ -63,7 +63,7 @@ function pickDocument() {
     var browsedFile = null;
 
     browseBtn.onClick = function () {
-        var f = File.openDialog("Selecteer een PSD-bestand", "*.psd");
+        var f = File.openDialog("Selecteer een PSD/PSB-bestand", "*.psd;*.psb");
         if (f) { browsedFile = f; action = "browse"; dlg.close(); }
     };
     useBtn.onClick = function () { action = "select"; dlg.close(); };

@@ -14,7 +14,7 @@ function padZero4(mm) {
 
 function toSnakeCase(str) {
     return str
-        .replace(/\.psd$/i, "")
+        .replace(/\.(psd|psb)$/i, "")
         .replace(/([a-z])([A-Z])/g, "$1_$2")
         .replace(/[\s\-\.]+/g, "_")
         .replace(/[^a-zA-Z0-9_]/g, "_")
@@ -31,6 +31,20 @@ function getBitsPerChannel(bpc) {
         case BitsPerChannelType.THIRTYTWO: return 32;
         default: return 8;
     }
+}
+
+// Indented tree dump of layer visibility. [v] visible, [ ] hidden.
+function dumpLayerVisibility(layers, prefix) {
+    var out = "";
+    for (var i = 0; i < layers.length; i++) {
+        var L = layers[i];
+        var v = L.visible ? "[v]" : "[ ]";
+        out += prefix + v + " " + L.name + "\n";
+        if (L.typename === "LayerSet") {
+            out += dumpLayerVisibility(L.layers, prefix + "    ");
+        }
+    }
+    return out;
 }
 
 function getColorModeName(mode) {

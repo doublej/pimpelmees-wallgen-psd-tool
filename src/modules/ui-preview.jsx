@@ -161,7 +161,7 @@ function showPreviewDialog(di, ooc, semiTransparent, iccIssue, dpiTooHigh, hidde
     var nameLbl = nameRow.add("statictext", undefined, "Bestandsnaam");
     nameLbl.preferredSize = [LABEL_W, -1];
     nameLbl.graphics.font = ScriptUI.newFont("dialog", "Bold", 12);
-    var defaultName = toSnakeCase(di.name.replace(/\.psd$/i, ""));
+    var defaultName = toSnakeCase(di.name.replace(/\.(psd|psb)$/i, ""));
     var nameInput = nameRow.add("edittext", undefined, defaultName);
     nameInput.alignment = ["fill", "center"];
     nameInput.preferredSize = [-1, 26];
