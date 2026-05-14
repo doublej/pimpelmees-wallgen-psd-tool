@@ -64,15 +64,14 @@ function automodeProcessOne(psdFile, opts) {
     var events = [];
     var result;
     try {
-        events.push("open " + psdFile.name);
+        ev_section(events, "open");
+        ev_kv(events, "file", psdFile.name);
         working = app.open(psdFile);
-        events.push("opened " + iccSnapshot(working)
-            + " size=" + Math.round(working.width.as("px")) + "×" + Math.round(working.height.as("px")) + "px"
-            + " dpi=" + Math.round(working.resolution)
-            + " layers=" + working.layers.length);
+        ev_kv(events, "doc", describeDocOpen(working));
+        ev_kv(events, "profile", "\"" + (working.colorProfileName || "None") + "\"");
         result = automodeRunWorking(working, psdFile, opts, events);
     } catch (e) {
-        events.push("ERROR " + e.message);
+        ev_error(events, e.message);
         result = { ok: false, reason: "fout: " + e.message };
     }
     if (working) {
@@ -95,33 +94,40 @@ function automodeProcessOne(psdFile, opts) {
 // Duotone is the exception: changeMode flattens the doc, so its conversion
 // must run before mask detection — those files lose per-layer detection.
 function automodeRunWorking(working, psdFile, opts, events) {
-    function log(s) { if (events) events.push(s); }
     var mode = working.mode;
 
     if (mode !== DocumentMode.DUOTONE
         && mode !== DocumentMode.GRAYSCALE
         && mode !== DocumentMode.CMYK) {
-        log("reject mode=" + getColorModeName(mode));
+        ev_section(events, "reject");
+        ev_kv(events, "reason", "unsupported mode " + getColorModeName(mode));
         return { ok: false, reason: "mode niet ondersteund: " + getColorModeName(mode) };
     }
 
     if (mode === DocumentMode.CMYK || mode === DocumentMode.GRAYSCALE) {
         var iccCheck = checkIccProfile(working);
-        log(describeIccCheck(iccCheck, mode));
-        if (iccCheck && iccCheck.wrongMode) {
-            log("reject ICC verkeerde mode: " + iccCheck.profile);
+        ev_section(events, "icc-check");
+        if (!iccCheck) {
+            ev_kv(events, "verdict", "match");
+        } else if (iccCheck.wrongMode) {
+            ev_kv(events, "verdict", "wrong mode");
+            ev_kv(events, "got", iccCheck.profile);
             return { ok: false, reason: "ICC verkeerde mode: " + iccCheck.profile };
+        } else {
+            ev_kv(events, "verdict", "differs (will convert)");
+            ev_kv(events, "got", "\"" + iccCheck.profile + "\"");
+            ev_kv(events, "expected", "\"" + iccCheck.expected + "\"");
         }
     }
 
     if (mode === DocumentMode.DUOTONE) {
-        log("pre-duotone " + iccSnapshot(working));
+        ev_section(events, "duotone → grayscale");
+        ev_kv(events, "from", iccSnapshot(working));
         convertDuotoneToGrayscale(working);
-        log("convertDuotoneToGrayscale → " + iccSnapshot(working));
+        ev_kv(events, "to", iccSnapshot(working));
     }
 
     unlockBackground(working);
-    log("unlockBackground");
     app.activeDocument = working;
 
     // Per-layer cover detection — each match carries its own inferred circle.
@@ -131,58 +137,78 @@ function automodeRunWorking(working, psdFile, opts, events) {
     if (mode !== DocumentMode.DUOTONE && working.layers.length > 1) {
         var maskCandidates = detectMaskLayers(working);
         var candCount = (maskCandidates && maskCandidates.length) || 0;
-        log("detectMaskLayers candidates=" + candCount);
+        ev_section(events, "detect mask layers");
+        ev_kv(events, "candidates", String(candCount));
         if (candCount > 0) {
             maskCandidates.sort(function (a, b) { return b.circle.r_px - a.circle.r_px; });
             detection = maskCandidates[0].circle;
             for (var mi = 0; mi < maskCandidates.length; mi++) {
                 var pName = "";
                 try { pName = maskCandidates[mi].path || maskCandidates[mi].layer.name; } catch (eN) {}
-                log("  hide cover: " + pName + " Ø=" + Math.round(maskCandidates[mi].circle.diameter_px) + "px");
+                ev_kv(events, "  hide", pName + "  Ø=" + Math.round(maskCandidates[mi].circle.diameter_px) + " px");
                 try { maskCandidates[mi].layer.visible = false; } catch (e) {}
             }
         }
         var beforeCount = countLayersDeep(working.layers);
         removeHiddenLayersDeep(working, working.layers);
-        log("removeHiddenLayersDeep " + beforeCount + " → " + countLayersDeep(working.layers) + " layers");
+        ev_kv(events, "removeHidden", beforeCount + " → " + countLayersDeep(working.layers) + " layers");
         discardLayerMasksDeep(working, working.layers);
-        log("discardLayerMasksDeep");
-    }
-    if (!detection) {
-        detection = detectCircle(working);
-        if (detection) log("detectCircle fallback Ø=" + Math.round(detection.diameter_px) + "px (" + detection.diameter_mm.toFixed(1) + "mm)");
-    } else {
-        log("circle source=mask Ø=" + Math.round(detection.diameter_px) + "px (" + detection.diameter_mm.toFixed(1) + "mm)");
-    }
-    if (!detection) {
-        log("reject geen cirkel/cover gedetecteerd");
-        return { ok: false, reason: "geen cirkel/cover gedetecteerd" };
+        ev_kv(events, "discardMasks", "done");
     }
 
+    ev_section(events, "circle");
+    if (!detection) {
+        detection = detectCircle(working);
+        if (detection) {
+            ev_kv(events, "source", "composite fallback (no mask candidates)");
+        }
+    } else {
+        ev_kv(events, "source", "largest mask candidate");
+    }
+    if (!detection) {
+        ev_kv(events, "result", "none — reject");
+        return { ok: false, reason: "geen cirkel/cover gedetecteerd" };
+    }
+    ev_kv(events, "diameter", Math.round(detection.diameter_px) + " px · " + detection.diameter_mm.toFixed(1) + " mm");
+
     if (mode === DocumentMode.GRAYSCALE) {
-        log("pre-assignGrayGamma " + iccSnapshot(working));
+        ev_section(events, "finish (grayscale)");
+        ev_kv(events, "from", iccSnapshot(working));
         assignGrayGamma(working);
-        log("assignGrayGamma → " + iccSnapshot(working) + " (target=\"" + NEW_DOC_GRAY_PROFILE + "\")");
+        ev_kv(events, "assign", "→ \"" + NEW_DOC_GRAY_PROFILE + "\"");
+        ev_kv(events, "to", iccSnapshot(working));
     } else if (mode === DocumentMode.CMYK) {
         var iccCheck2 = checkIccProfile(working);
-        log("pre-finishing " + iccSnapshot(working) + " — " + describeIccCheck(iccCheck2, mode));
+        ev_section(events, "finish (CMYK)");
+        ev_kv(events, "state", iccSnapshot(working));
         if (iccCheck2 && !iccCheck2.wrongMode) {
+            ev_kv(events, "convert", "\"" + (working.colorProfileName || "None") + "\" → \"" + NEW_DOC_CMYK_PROFILE + "\"");
+            ev_kv(events, "params", "intent=relativeColorimetric · BPC=true · dither=true");
             convertToFogra39(working);
-            log("convertToFogra39 → " + iccSnapshot(working)
-                + " (target=\"" + NEW_DOC_CMYK_PROFILE + "\""
-                + " intent=relativeColorimetric BPC=true dither=true)");
+            ev_kv(events, "to", iccSnapshot(working));
         } else {
-            log("ICC already FOGRA39 — no convert");
+            ev_kv(events, "convert", "skipped — already FOGRA39");
         }
     }
 
-    try { working.flatten(); log("working.flatten layers=" + working.layers.length); } catch (e) { log("flatten ERROR: " + e.message); }
+    ev_section(events, "flatten");
+    try {
+        working.flatten();
+        ev_kv(events, "result", working.layers.length + " layer" + (working.layers.length === 1 ? "" : "s"));
+    } catch (e) {
+        ev_error(events, "flatten failed: " + e.message);
+    }
 
     var abbreviation = inferAbbreviation(psdFile.name);
     var masterDir = psdFile.parent.fsName;
     var masterBase = psdFile.name.replace(/\.[^.]+$/, "");
     var outputDir = masterDir + "/" + masterBase + "_export";
-    log("abbreviation=" + abbreviation + " outputDir=" + outputDir);
+
+    ev_section(events, "export");
+    ev_kv(events, "abbrev", abbreviation);
+    ev_kv(events, "shape", opts.shape);
+    ev_kv(events, "bleed", opts.bleedMm + " mm");
+    ev_kv(events, "outdir", outputDir);
 
     var saved = exportTiffSet(opts.diameterList, {
         workingDoc: working,
@@ -385,30 +411,78 @@ function stepperFlow() {
     if (working) try { working.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) {}
 }
 
+// Layout constants — kv columns align inside a section, sub-iters indent
+// one extra level. Total line width caps at LINE_WIDTH for the file
+// banner so logs read well in TextEdit's default window.
+var LOG_LINE_WIDTH = 78;
+var LOG_KEY_WIDTH = 12;
+var LOG_INDENT = "    ";
+var LOG_SUB_INDENT = "        ";
+
 function writeAutomodeLog(folder, results) {
     var f = new File(folder.fsName + "/automode_log.txt");
     if (!f.open("w")) return;
-    f.writeln("Pimpelmees Wallgen automode — " + (new Date()).toString());
+
+    var bar = repeatChar("=", LOG_LINE_WIDTH);
+    f.writeln(bar);
+    f.writeln("  Pimpelmees Wallgen automode");
+    f.writeln("  " + (new Date()).toString());
+    f.writeln(bar);
     f.writeln("");
 
     var okCount = 0, skipCount = 0;
     for (var i = 0; i < results.length; i++) {
         var r = results[i];
-        var status = r.ok
-            ? "OK   " + r.file + " — " + r.savedCount + " TIFF(s)"
-            : "SKIP " + r.file + " — " + r.reason;
-        f.writeln("=== " + status + " ===");
-        var ev = r.events || [];
-        for (var j = 0; j < ev.length; j++) {
-            f.writeln("  " + ev[j]);
-        }
-        f.writeln("");
         if (r.ok) okCount++; else skipCount++;
+        writeFileSection(f, r);
     }
 
-    f.writeln("---");
-    f.writeln("Totaal: " + results.length
-        + " | OK: " + okCount
-        + " | overgeslagen: " + skipCount);
+    f.writeln(bar);
+    f.writeln("  Totaal: " + results.length
+        + "  ·  OK: " + okCount
+        + "  ·  overgeslagen: " + skipCount);
+    f.writeln(bar);
     f.close();
+}
+
+function writeFileSection(f, r) {
+    var bar = repeatChar("-", LOG_LINE_WIDTH);
+    var status = r.ok
+        ? "OK    " + r.file + "  →  " + r.savedCount + " TIFF" + (r.savedCount === 1 ? "" : "s")
+        : "SKIP  " + r.file + "  ·  " + r.reason;
+    f.writeln(bar);
+    f.writeln("  " + status);
+    f.writeln(bar);
+
+    var ev = r.events || [];
+    var inSubheader = false;
+    for (var j = 0; j < ev.length; j++) {
+        var e = ev[j];
+        if (typeof e === "string") {
+            // Backwards-compat: any stray string event renders as info.
+            f.writeln(LOG_INDENT + e);
+            continue;
+        }
+        if (e.kind === "section") {
+            inSubheader = false;
+            f.writeln("");
+            f.writeln("  ▸ " + e.title);
+        } else if (e.kind === "subheader") {
+            inSubheader = true;
+            f.writeln("");
+            f.writeln(LOG_INDENT + "• " + e.title);
+        } else if (e.kind === "kv") {
+            var indent = inSubheader ? LOG_SUB_INDENT : LOG_INDENT;
+            f.writeln(indent + padRight(e.key, LOG_KEY_WIDTH) + e.value);
+        } else if (e.kind === "info") {
+            var indent2 = inSubheader ? LOG_SUB_INDENT : LOG_INDENT;
+            f.writeln(indent2 + e.text);
+        } else if (e.kind === "error") {
+            var indent3 = inSubheader ? LOG_SUB_INDENT : LOG_INDENT;
+            f.writeln(indent3 + "ERROR  " + e.text);
+        } else if (e.kind === "blank") {
+            f.writeln("");
+        }
+    }
+    f.writeln("");
 }

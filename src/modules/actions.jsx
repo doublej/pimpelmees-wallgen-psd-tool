@@ -216,25 +216,24 @@ function exportTiffSet(diameterMmList, opts) {
     for (var i = 0; i < diameterMmList.length; i++) {
         var targetMm = diameterMmList[i];
         var finalMm = targetMm + 2 * opts.bleedMm;
-        if (events) events.push("iter target=" + targetMm + "mm final=" + finalMm + "mm (bleed " + opts.bleedMm + "mm)");
+        ev_subheader(events, "iter " + targetMm + " mm  →  final " + finalMm + " mm");
         var iter = opts.workingDoc.duplicate(opts.abbreviation + "_iter_" + targetMm);
-        if (events) events.push("  duplicate → " + iter.name);
+        ev_kv(events, "duplicate", iter.name);
         try {
             resizeContentToDiameter(iter, opts.detection.diameter_px, finalMm);
-            if (events) events.push("  resizeContentToDiameter detectedØ=" + Math.round(opts.detection.diameter_px) + "px → " + finalMm + "mm");
+            ev_kv(events, "resize", "Ø " + Math.round(opts.detection.diameter_px) + " px → " + finalMm + " mm");
             fitCanvasToFinal(iter, finalMm);
-            if (events) events.push("  fitCanvasToFinal " + finalMm + "×" + finalMm + "mm");
-            if (events) events.push("  pre-assignTargetProfile " + iccSnapshot(iter));
+            ev_kv(events, "canvas", finalMm + " × " + finalMm + " mm");
             assignTargetProfile(iter);
-            if (events) events.push("  assignTargetProfile → " + iccSnapshot(iter));
+            ev_kv(events, "profile", "\"" + (iter.colorProfileName || "None") + "\"");
 
             var fname = opts.abbreviation + "_" + opts.shape + "_" + padZero4(targetMm) + ".tif";
             var outFile = new File(outDir.fsName + "/" + fname);
             saveTiff(iter, outFile);
-            if (events) events.push("  saveTiff → " + fname);
+            ev_kv(events, "save", fname);
             savedNames.push(fname);
         } catch (e) {
-            if (events) events.push("  ERROR iter " + targetMm + ": " + e.message);
+            ev_error(events, "iter " + targetMm + " mm: " + e.message);
             iter.close(SaveOptions.DONOTSAVECHANGES);
             throw e;
         }

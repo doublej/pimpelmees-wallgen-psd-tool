@@ -64,6 +64,53 @@ function describeIccCheck(check, mode) {
     return "icc-check: differs (got=\"" + check.profile + "\" expected=\"" + check.expected + "\")";
 }
 
+// --- Structured log event helpers ---
+// Events are objects (not strings) so writeAutomodeLog can render
+// sections, key/value alignment, and indentation consistently.
+// Kinds: "section" (top-level header), "subheader" (e.g. per-iter),
+// "kv" (aligned key/value), "info" (free text under current section),
+// "blank" (vertical breathing room).
+function ev_section(events, title) {
+    if (events) events.push({ kind: "section", title: title });
+}
+function ev_subheader(events, title) {
+    if (events) events.push({ kind: "subheader", title: title });
+}
+function ev_kv(events, key, value) {
+    if (events) events.push({ kind: "kv", key: key, value: value });
+}
+function ev_info(events, text) {
+    if (events) events.push({ kind: "info", text: text });
+}
+function ev_error(events, text) {
+    if (events) events.push({ kind: "error", text: text });
+}
+function ev_blank(events) {
+    if (events) events.push({ kind: "blank" });
+}
+
+function repeatChar(c, n) {
+    var s = "";
+    for (var i = 0; i < n; i++) s += c;
+    return s;
+}
+
+function padRight(s, n) {
+    s = String(s);
+    if (s.length >= n) return s;
+    return s + repeatChar(" ", n - s.length);
+}
+
+// Compact "mode + bits + size" string without the redundant key=value
+// noise. Used for the "open" line where space matters.
+function describeDocOpen(doc) {
+    return getColorModeName(doc.mode)
+        + " · " + doc.bitsPerChannel + "-bit"
+        + " · " + Math.round(doc.width.as("px")) + "×" + Math.round(doc.height.as("px")) + " px"
+        + " · " + Math.round(doc.resolution) + " DPI"
+        + " · " + doc.layers.length + " layer" + (doc.layers.length === 1 ? "" : "s");
+}
+
 function getColorModeName(mode) {
     switch (mode) {
         case DocumentMode.RGB: return "RGB";
