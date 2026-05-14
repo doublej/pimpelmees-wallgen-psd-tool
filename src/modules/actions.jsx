@@ -115,7 +115,11 @@ function convertToFogra39(doc) {
     var ref = new ActionReference();
     ref.putEnumerated(charIDToTypeID("Dcmn"), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
     desc.putReference(charIDToTypeID("null"), ref);
-    desc.putString(stringIDToTypeID("profile"), NEW_DOC_CMYK_PROFILE);
+    // Destination key for convertToProfile is "T   " (T + 3 spaces),
+    // NOT "profile" — that one is assignProfile's. Using the wrong key
+    // makes Photoshop fail with "parameters for command 'Convert to
+    // Profile' are not currently valid".
+    desc.putString(charIDToTypeID("T   "), NEW_DOC_CMYK_PROFILE);
     desc.putEnumerated(charIDToTypeID("Inte"), charIDToTypeID("Inte"), charIDToTypeID("Rltv"));
     desc.putBoolean(charIDToTypeID("MpBl"), true);
     desc.putBoolean(charIDToTypeID("Dthr"), true);
