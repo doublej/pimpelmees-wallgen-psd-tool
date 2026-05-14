@@ -66,11 +66,9 @@ function automodeProcessOne(psdFile, opts) {
     try {
         events.push("open " + psdFile.name);
         working = app.open(psdFile);
-        events.push("opened mode=" + getColorModeName(working.mode)
-            + " profile=\"" + (working.colorProfileName || "None") + "\""
+        events.push("opened " + iccSnapshot(working)
             + " size=" + Math.round(working.width.as("px")) + "×" + Math.round(working.height.as("px")) + "px"
             + " dpi=" + Math.round(working.resolution)
-            + " bits=" + working.bitsPerChannel
             + " layers=" + working.layers.length);
         result = automodeRunWorking(working, psdFile, opts, events);
     } catch (e) {
@@ -107,8 +105,9 @@ function automodeRunWorking(working, psdFile, opts, events) {
         return { ok: false, reason: "mode niet ondersteund: " + getColorModeName(mode) };
     }
 
-    if (mode === DocumentMode.CMYK) {
+    if (mode === DocumentMode.CMYK || mode === DocumentMode.GRAYSCALE) {
         var iccCheck = checkIccProfile(working);
+        log(describeIccCheck(iccCheck, mode));
         if (iccCheck && iccCheck.wrongMode) {
             log("reject ICC verkeerde mode: " + iccCheck.profile);
             return { ok: false, reason: "ICC verkeerde mode: " + iccCheck.profile };
@@ -116,8 +115,9 @@ function automodeRunWorking(working, psdFile, opts, events) {
     }
 
     if (mode === DocumentMode.DUOTONE) {
+        log("pre-duotone " + iccSnapshot(working));
         convertDuotoneToGrayscale(working);
-        log("convertDuotoneToGrayscale → mode=" + getColorModeName(working.mode));
+        log("convertDuotoneToGrayscale → " + iccSnapshot(working));
     }
 
     unlockBackground(working);
@@ -160,14 +160,17 @@ function automodeRunWorking(working, psdFile, opts, events) {
     }
 
     if (mode === DocumentMode.GRAYSCALE) {
+        log("pre-assignGrayGamma " + iccSnapshot(working));
         assignGrayGamma(working);
-        log("assignGrayGamma → " + (working.colorProfileName || "None"));
+        log("assignGrayGamma → " + iccSnapshot(working) + " (target=\"" + NEW_DOC_GRAY_PROFILE + "\")");
     } else if (mode === DocumentMode.CMYK) {
         var iccCheck2 = checkIccProfile(working);
+        log("pre-finishing " + iccSnapshot(working) + " — " + describeIccCheck(iccCheck2, mode));
         if (iccCheck2 && !iccCheck2.wrongMode) {
-            var fromProfile = working.colorProfileName || "None";
             convertToFogra39(working);
-            log("convertToFogra39 from \"" + fromProfile + "\" → \"" + (working.colorProfileName || "None") + "\"");
+            log("convertToFogra39 → " + iccSnapshot(working)
+                + " (target=\"" + NEW_DOC_CMYK_PROFILE + "\""
+                + " intent=relativeColorimetric BPC=true dither=true)");
         } else {
             log("ICC already FOGRA39 — no convert");
         }

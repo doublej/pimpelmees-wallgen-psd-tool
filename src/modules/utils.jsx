@@ -47,6 +47,23 @@ function dumpLayerVisibility(layers, prefix) {
     return out;
 }
 
+// Compact ICC/mode snapshot for log lines. Surfaces enough state to
+// distinguish a no-op assign from a real remap when reading the log.
+function iccSnapshot(doc) {
+    return "mode=" + getColorModeName(doc.mode)
+        + " profile=\"" + (doc.colorProfileName || "None") + "\""
+        + " bits=" + doc.bitsPerChannel;
+}
+
+// Plain-language summary of checkIccProfile's verdict so the log
+// captures the decision (match / wrong-profile / wrong-mode) and
+// the exact strings compared, not just the eventual mutation.
+function describeIccCheck(check, mode) {
+    if (!check) return "icc-check: match";
+    if (check.wrongMode) return "icc-check: wrong mode (" + check.profile + ")";
+    return "icc-check: differs (got=\"" + check.profile + "\" expected=\"" + check.expected + "\")";
+}
+
 function getColorModeName(mode) {
     switch (mode) {
         case DocumentMode.RGB: return "RGB";

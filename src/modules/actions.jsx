@@ -224,8 +224,9 @@ function exportTiffSet(diameterMmList, opts) {
             if (events) events.push("  resizeContentToDiameter detectedØ=" + Math.round(opts.detection.diameter_px) + "px → " + finalMm + "mm");
             fitCanvasToFinal(iter, finalMm);
             if (events) events.push("  fitCanvasToFinal " + finalMm + "×" + finalMm + "mm");
+            if (events) events.push("  pre-assignTargetProfile " + iccSnapshot(iter));
             assignTargetProfile(iter);
-            if (events) events.push("  assignTargetProfile → " + (iter.colorProfileName || "None"));
+            if (events) events.push("  assignTargetProfile → " + iccSnapshot(iter));
 
             var fname = opts.abbreviation + "_" + opts.shape + "_" + padZero4(targetMm) + ".tif";
             var outFile = new File(outDir.fsName + "/" + fname);
