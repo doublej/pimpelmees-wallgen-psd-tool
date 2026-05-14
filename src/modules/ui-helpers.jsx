@@ -33,6 +33,48 @@ function addWarning(parent, text) {
     );
 }
 
+// Modal pause dialog for the debug stepper. Returns true to continue, false
+// to abort. detail can be multiline; layerDump is shown in a scrollable area.
+function pauseStep(title, detail, layerDump) {
+    var dlg = new Window("dialog", "Stepper");
+    dlg.orientation = "column";
+    dlg.alignChildren = ["fill", "top"];
+    dlg.margins = [20, 16, 20, 16];
+    dlg.spacing = 8;
+    dlg.preferredSize = [520, -1];
+
+    var t = dlg.add("statictext", undefined, title);
+    t.graphics.font = ScriptUI.newFont("dialog", "Bold", 14);
+
+    if (detail) {
+        var d = dlg.add("statictext", undefined, detail, { multiline: true });
+        d.preferredSize = [480, -1];
+        d.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
+    }
+
+    if (layerDump) {
+        var et = dlg.add("edittext", undefined, layerDump, { multiline: true, readonly: true, scrolling: true });
+        et.preferredSize = [480, 220];
+        et.graphics.font = ScriptUI.newFont("Monaco", "Regular", 10);
+    }
+
+    var btns = dlg.add("group");
+    btns.alignment = ["fill", "bottom"];
+    btns.spacing = 10;
+    var stopBtn = btns.add("button", undefined, "Stop", { name: "cancel" });
+    var spacer = btns.add("group");
+    spacer.alignment = ["fill", "center"];
+    var contBtn = btns.add("button", undefined, "Continue", { name: "ok" });
+    contBtn.preferredSize = [140, 30];
+
+    var action = "stop";
+    contBtn.onClick = function () { action = "continue"; dlg.close(); };
+    stopBtn.onClick = function () { action = "stop"; dlg.close(); };
+
+    dlg.show();
+    return action === "continue";
+}
+
 function addCompactRow(parent, label, value) {
     var row = parent.add("group");
     row.alignment = ["fill", "top"];
