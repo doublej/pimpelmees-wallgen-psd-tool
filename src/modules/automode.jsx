@@ -57,18 +57,30 @@ function automodeIsPsdOrPsb(f) {
 
 // Open + dispatch + always close without saving. No duplicate of the source
 // — the original on disk is never written, so working in place is safe.
+// Every mutation gets pushed onto `events` so the log captures the full
+// per-file pipeline, not just the final outcome.
 function automodeProcessOne(psdFile, opts) {
     var working = null;
+    var events = [];
     var result;
     try {
+        events.push("open " + psdFile.name);
         working = app.open(psdFile);
-        result = automodeRunWorking(working, psdFile, opts);
+        events.push("opened mode=" + getColorModeName(working.mode)
+            + " profile=\"" + (working.colorProfileName || "None") + "\""
+            + " size=" + Math.round(working.width.as("px")) + "×" + Math.round(working.height.as("px")) + "px"
+            + " dpi=" + Math.round(working.resolution)
+            + " bits=" + working.bitsPerChannel
+            + " layers=" + working.layers.length);
+        result = automodeRunWorking(working, psdFile, opts, events);
     } catch (e) {
+        events.push("ERROR " + e.message);
         result = { ok: false, reason: "fout: " + e.message };
     }
     if (working) {
         try { working.close(SaveOptions.DONOTSAVECHANGES); } catch (e1) {}
     }
+    result.events = events;
     return result;
 }
 
@@ -84,27 +96,32 @@ function automodeProcessOne(psdFile, opts) {
 //   6. exportTiffSet
 // Duotone is the exception: changeMode flattens the doc, so its conversion
 // must run before mask detection — those files lose per-layer detection.
-function automodeRunWorking(working, psdFile, opts) {
+function automodeRunWorking(working, psdFile, opts, events) {
+    function log(s) { if (events) events.push(s); }
     var mode = working.mode;
 
     if (mode !== DocumentMode.DUOTONE
         && mode !== DocumentMode.GRAYSCALE
         && mode !== DocumentMode.CMYK) {
+        log("reject mode=" + getColorModeName(mode));
         return { ok: false, reason: "mode niet ondersteund: " + getColorModeName(mode) };
     }
 
     if (mode === DocumentMode.CMYK) {
         var iccCheck = checkIccProfile(working);
         if (iccCheck && iccCheck.wrongMode) {
+            log("reject ICC verkeerde mode: " + iccCheck.profile);
             return { ok: false, reason: "ICC verkeerde mode: " + iccCheck.profile };
         }
     }
 
     if (mode === DocumentMode.DUOTONE) {
         convertDuotoneToGrayscale(working);
+        log("convertDuotoneToGrayscale → mode=" + getColorModeName(working.mode));
     }
 
     unlockBackground(working);
+    log("unlockBackground");
     app.activeDocument = working;
 
     // Per-layer cover detection — each match carries its own inferred circle.
@@ -113,38 +130,56 @@ function automodeRunWorking(working, psdFile, opts) {
     var detection = null;
     if (mode !== DocumentMode.DUOTONE && working.layers.length > 1) {
         var maskCandidates = detectMaskLayers(working);
-        if (maskCandidates && maskCandidates.length > 0) {
+        var candCount = (maskCandidates && maskCandidates.length) || 0;
+        log("detectMaskLayers candidates=" + candCount);
+        if (candCount > 0) {
             maskCandidates.sort(function (a, b) { return b.circle.r_px - a.circle.r_px; });
             detection = maskCandidates[0].circle;
             for (var mi = 0; mi < maskCandidates.length; mi++) {
+                var pName = "";
+                try { pName = maskCandidates[mi].path || maskCandidates[mi].layer.name; } catch (eN) {}
+                log("  hide cover: " + pName + " Ø=" + Math.round(maskCandidates[mi].circle.diameter_px) + "px");
                 try { maskCandidates[mi].layer.visible = false; } catch (e) {}
             }
         }
+        var beforeCount = countLayersDeep(working.layers);
         removeHiddenLayersDeep(working, working.layers);
+        log("removeHiddenLayersDeep " + beforeCount + " → " + countLayersDeep(working.layers) + " layers");
         discardLayerMasksDeep(working, working.layers);
+        log("discardLayerMasksDeep");
     }
     if (!detection) {
         detection = detectCircle(working);
+        if (detection) log("detectCircle fallback Ø=" + Math.round(detection.diameter_px) + "px (" + detection.diameter_mm.toFixed(1) + "mm)");
+    } else {
+        log("circle source=mask Ø=" + Math.round(detection.diameter_px) + "px (" + detection.diameter_mm.toFixed(1) + "mm)");
     }
     if (!detection) {
+        log("reject geen cirkel/cover gedetecteerd");
         return { ok: false, reason: "geen cirkel/cover gedetecteerd" };
     }
 
     if (mode === DocumentMode.GRAYSCALE) {
         assignGrayGamma(working);
+        log("assignGrayGamma → " + (working.colorProfileName || "None"));
     } else if (mode === DocumentMode.CMYK) {
         var iccCheck2 = checkIccProfile(working);
         if (iccCheck2 && !iccCheck2.wrongMode) {
+            var fromProfile = working.colorProfileName || "None";
             convertToFogra39(working);
+            log("convertToFogra39 from \"" + fromProfile + "\" → \"" + (working.colorProfileName || "None") + "\"");
+        } else {
+            log("ICC already FOGRA39 — no convert");
         }
     }
 
-    try { working.flatten(); } catch (e) {}
+    try { working.flatten(); log("working.flatten layers=" + working.layers.length); } catch (e) { log("flatten ERROR: " + e.message); }
 
     var abbreviation = inferAbbreviation(psdFile.name);
     var masterDir = psdFile.parent.fsName;
     var masterBase = psdFile.name.replace(/\.[^.]+$/, "");
     var outputDir = masterDir + "/" + masterBase + "_export";
+    log("abbreviation=" + abbreviation + " outputDir=" + outputDir);
 
     var saved = exportTiffSet(opts.diameterList, {
         workingDoc: working,
@@ -152,10 +187,24 @@ function automodeRunWorking(working, psdFile, opts) {
         abbreviation: abbreviation,
         outputDir: outputDir,
         detection: { diameter_px: detection.diameter_px },
-        bleedMm: opts.bleedMm
+        bleedMm: opts.bleedMm,
+        events: events
     });
 
     return { ok: true, savedCount: saved.length };
+}
+
+// Counts every layer in the tree (groups + leaves). Used purely for log
+// before/after diffs so designers can see what removeHiddenLayersDeep ate.
+function countLayersDeep(layers) {
+    var n = 0;
+    for (var i = 0; i < layers.length; i++) {
+        n++;
+        if (layers[i].typename === "LayerSet") {
+            n += countLayersDeep(layers[i].layers);
+        }
+    }
+    return n;
 }
 
 // Single-file debug runner. Pauses between every action with a dialog
@@ -337,18 +386,23 @@ function writeAutomodeLog(folder, results) {
     var f = new File(folder.fsName + "/automode_log.txt");
     if (!f.open("w")) return;
     f.writeln("Pimpelmees Wallgen automode — " + (new Date()).toString());
-    f.writeln("---");
+    f.writeln("");
+
     var okCount = 0, skipCount = 0;
     for (var i = 0; i < results.length; i++) {
         var r = results[i];
-        if (r.ok) {
-            okCount++;
-            f.writeln("OK   " + r.file + " — " + r.savedCount + " TIFF(s)");
-        } else {
-            skipCount++;
-            f.writeln("SKIP " + r.file + " — " + r.reason);
+        var status = r.ok
+            ? "OK   " + r.file + " — " + r.savedCount + " TIFF(s)"
+            : "SKIP " + r.file + " — " + r.reason;
+        f.writeln("=== " + status + " ===");
+        var ev = r.events || [];
+        for (var j = 0; j < ev.length; j++) {
+            f.writeln("  " + ev[j]);
         }
+        f.writeln("");
+        if (r.ok) okCount++; else skipCount++;
     }
+
     f.writeln("---");
     f.writeln("Totaal: " + results.length
         + " | OK: " + okCount

@@ -210,22 +210,30 @@ function inferAbbreviation(fileName) {
 function exportTiffSet(diameterMmList, opts) {
     var outDir = new Folder(opts.outputDir);
     if (!outDir.exists) outDir.create();
+    var events = opts.events || null;
 
     var savedNames = [];
     for (var i = 0; i < diameterMmList.length; i++) {
         var targetMm = diameterMmList[i];
         var finalMm = targetMm + 2 * opts.bleedMm;
+        if (events) events.push("iter target=" + targetMm + "mm final=" + finalMm + "mm (bleed " + opts.bleedMm + "mm)");
         var iter = opts.workingDoc.duplicate(opts.abbreviation + "_iter_" + targetMm);
+        if (events) events.push("  duplicate → " + iter.name);
         try {
             resizeContentToDiameter(iter, opts.detection.diameter_px, finalMm);
+            if (events) events.push("  resizeContentToDiameter detectedØ=" + Math.round(opts.detection.diameter_px) + "px → " + finalMm + "mm");
             fitCanvasToFinal(iter, finalMm);
+            if (events) events.push("  fitCanvasToFinal " + finalMm + "×" + finalMm + "mm");
             assignTargetProfile(iter);
+            if (events) events.push("  assignTargetProfile → " + (iter.colorProfileName || "None"));
 
             var fname = opts.abbreviation + "_" + opts.shape + "_" + padZero4(targetMm) + ".tif";
             var outFile = new File(outDir.fsName + "/" + fname);
             saveTiff(iter, outFile);
+            if (events) events.push("  saveTiff → " + fname);
             savedNames.push(fname);
         } catch (e) {
+            if (events) events.push("  ERROR iter " + targetMm + ": " + e.message);
             iter.close(SaveOptions.DONOTSAVECHANGES);
             throw e;
         }
