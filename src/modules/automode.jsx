@@ -134,7 +134,8 @@ function automodeRunWorking(working, psdFile, opts, events) {
         ev_kv(events, "to", iccSnapshot(working));
     }
 
-    unlockBackground(working);
+    ev_section(events, "unlock");
+    unlockAllLayersDeep(working.layers, events);
     app.activeDocument = working;
 
     // Canonical pipeline (shared with cirkelFlow + stepperFlow):
@@ -238,9 +239,11 @@ function stepperFlow() {
             "Mode: " + getColorModeName(working.mode) + "\nProfile: " + safeProfileName(working),
             dumpLayerVisibility(working.layers, ""))) return;
 
-        unlockBackground(working);
+        var unlockedN = unlockAllLayersDeep(working.layers, null);
         app.activeDocument = working;
-        if (!pauseStep("3. Background unlocked", "", dumpLayerVisibility(working.layers, ""))) return;
+        if (!pauseStep("3. All layers unlocked",
+            "Cleared lock flags on " + unlockedN + " layer(s).",
+            dumpLayerVisibility(working.layers, ""))) return;
 
         // Same pipeline as cirkelFlow + automodeRunWorking — pauseStep
         // dialogs wrap each helper call so the designer can inspect state

@@ -83,11 +83,44 @@ function countHiddenLayers(layers) {
     return count;
 }
 
+// Convert the bottom Background layer to a regular layer (legacy entry
+// point — kept for backwards compat and as a quick "just unlock the
+// bottom" call). Most flows now want unlockAllLayersDeep below.
 function unlockBackground(doc) {
     try {
         var last = doc.layers[doc.layers.length - 1];
         if (last.isBackgroundLayer) last.isBackgroundLayer = false;
     } catch (e) {}
+}
+
+// Walk the entire layer tree and clear every lock flag on every layer:
+// background flag, all-lock, pixel-lock, transparency-lock, position-
+// lock. Necessary before any mutation step (.remove(), .grouped=false,
+// Dlt mask) — Photoshop raises a non-suppressible "command Delete is
+// not currently available" modal when the script touches a locked
+// layer, even with DialogModes.NO. Designers routinely lock background
+// composites + reference layers in the BoP source PSDs.
+function unlockAllLayersDeep(layers, events) {
+    var n = unlockAllLayersInner(layers);
+    if (events) ev_kv(events, "unlockAllLayers", n + " unlocked");
+    return n;
+}
+function unlockAllLayersInner(layers) {
+    var n = 0;
+    for (var i = 0; i < layers.length; i++) {
+        var L = layers[i];
+        var changed = false;
+        try { if (L.isBackgroundLayer) { L.isBackgroundLayer = false; changed = true; } } catch (e1) {}
+        try { if (L.allLocked) { L.allLocked = false; changed = true; } } catch (e2) {}
+        try { if (L.pixelsLocked) { L.pixelsLocked = false; changed = true; } } catch (e3) {}
+        try { if (L.positionLocked) { L.positionLocked = false; changed = true; } } catch (e4) {}
+        try { if (L.transparentPixelsLocked) { L.transparentPixelsLocked = false; changed = true; } } catch (e5) {}
+        if (changed) n++;
+        if (L.typename === "LayerSet") {
+            n += unlockAllLayersInner(L.layers);
+        }
+    }
+    return n;
 }
 
 // Build a selection of every non-white pixel via Color Range sampled at white.

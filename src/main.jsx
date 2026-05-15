@@ -130,7 +130,7 @@ function cirkelFlow() {
             convertDuotoneToGrayscale(working);
         }
 
-        unlockBackground(working);
+        unlockAllLayersDeep(working.layers, null);
         app.activeDocument = working;
 
         // Canonical pipeline (shared with automodeRunWorking + stepperFlow).
