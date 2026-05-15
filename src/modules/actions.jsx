@@ -383,12 +383,30 @@ function removeHiddenLayersDeep(doc, layers) {
     }
 }
 
-// Delete (discard, don't apply) the active layer's pixel mask. Throws
-// when there's no mask — caller's try/catch swallows that.
+// True if the active layer carries a pixel layer mask. Probes via
+// Action Manager (`hasUserMask` property) so we can avoid calling Dlt
+// when there's nothing to delete — Photoshop raises a non-suppressible
+// "delete is not available" modal in that case on some versions, even
+// with DialogModes.NO.
+function activeLayerHasMask() {
+    try {
+        var ref = new ActionReference();
+        ref.putProperty(charIDToTypeID("Prpr"), stringIDToTypeID("hasUserMask"));
+        ref.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+        var d = executeActionGet(ref);
+        return d.getBoolean(stringIDToTypeID("hasUserMask"));
+    } catch (e) { return false; }
+}
+
+// Delete (discard, don't apply) the active layer's pixel mask. Caller
+// must verify the layer actually has one — guarded by activeLayerHasMask.
+// Uses canonical "Msk " enum value (Msk + space) instead of stringID
+// "mask" — the stringID form is unrecognised on older PS versions and
+// surfaces a system "delete is not available" dialog.
 function discardActiveLayerMask() {
     var desc = new ActionDescriptor();
     var ref = new ActionReference();
-    ref.putEnumerated(charIDToTypeID("Chnl"), charIDToTypeID("Chnl"), stringIDToTypeID("mask"));
+    ref.putEnumerated(charIDToTypeID("Chnl"), charIDToTypeID("Chnl"), charIDToTypeID("Msk "));
     desc.putReference(charIDToTypeID("null"), ref);
     executeAction(charIDToTypeID("Dlt "), desc, DialogModes.NO);
 }
@@ -404,7 +422,7 @@ function discardLayerMasksDeep(doc, layers) {
         if (!L.visible) continue;
         try {
             doc.activeLayer = L;
-            discardActiveLayerMask();
+            if (activeLayerHasMask()) discardActiveLayerMask();
         } catch (e) {}
         if (L.typename === "LayerSet") {
             discardLayerMasksDeep(doc, L.layers);
