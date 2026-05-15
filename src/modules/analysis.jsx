@@ -56,7 +56,7 @@ function hasSemiTransparentPixels(doc) {
 }
 
 function checkIccProfile(doc) {
-    var profile = doc.colorProfileName || "";
+    var profile = safeProfileName(doc);
     var mode = doc.mode;
 
     if (mode === DocumentMode.GRAYSCALE) {

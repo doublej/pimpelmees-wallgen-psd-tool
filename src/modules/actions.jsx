@@ -225,7 +225,7 @@ function exportTiffSet(diameterMmList, opts) {
             fitCanvasToFinal(iter, finalMm);
             ev_kv(events, "canvas", finalMm + " × " + finalMm + " mm");
             assignTargetProfile(iter);
-            ev_kv(events, "profile", "\"" + (iter.colorProfileName || "None") + "\"");
+            ev_kv(events, "profile", "\"" + safeProfileName(iter) + "\"");
 
             var fname = opts.abbreviation + "_" + opts.shape + "_" + padZero4(targetMm) + ".tif";
             var outFile = new File(outDir.fsName + "/" + fname);
@@ -329,7 +329,7 @@ function applyModeFinishing(working, originalMode, events) {
         ev_kv(events, "state", iccSnapshot(working));
         var icc = checkIccProfile(working);
         if (icc && !icc.wrongMode) {
-            var from = working.colorProfileName || "None";
+            var from = safeProfileName(working);
             ev_kv(events, "convert", "\"" + from + "\" → \"" + NEW_DOC_CMYK_PROFILE + "\"");
             ev_kv(events, "params", "intent=relativeColorimetric · BPC=true · dither=true");
             convertToFogra39(working);

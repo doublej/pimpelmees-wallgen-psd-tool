@@ -75,7 +75,7 @@ function automodeProcessOne(psdFile, opts) {
         ev_kv(events, "file", psdFile.name);
         working = app.open(psdFile);
         ev_kv(events, "doc", describeDocOpen(working));
-        ev_kv(events, "profile", "\"" + (working.colorProfileName || "None") + "\"");
+        ev_kv(events, "profile", "\"" + safeProfileName(working) + "\"");
         result = automodeRunWorking(working, psdFile, opts, events);
     } catch (e) {
         ev_error(events, e.message);
@@ -220,7 +220,7 @@ function stepperFlow() {
             convertDuotoneToGrayscale(working);
         }
         if (!pauseStep("2. Mode validated (conversion deferred to step 8)",
-            "Mode: " + getColorModeName(working.mode) + "\nProfile: " + (working.colorProfileName || "None"),
+            "Mode: " + getColorModeName(working.mode) + "\nProfile: " + safeProfileName(working),
             dumpLayerVisibility(working.layers, ""))) return;
 
         unlockBackground(working);
@@ -292,7 +292,7 @@ function stepperFlow() {
 
         applyModeFinishing(working, mode, null);
         if (!pauseStep("8. Profile finishing",
-            "Mode: " + getColorModeName(working.mode) + "  Profile: " + (working.colorProfileName || "None"),
+            "Mode: " + getColorModeName(working.mode) + "  Profile: " + safeProfileName(working),
             dumpLayerVisibility(working.layers, ""))) return;
 
         applyFlatten(working, null);
@@ -321,7 +321,7 @@ function stepperFlow() {
 
         assignTargetProfile(iter);
         if (!pauseStep("13. assignTargetProfile",
-            "Profile: " + (iter.colorProfileName || "None"),
+            "Profile: " + safeProfileName(iter),
             dumpLayerVisibility(iter.layers, ""))) return;
 
         var fname = abbreviation + "_" + shape + "_" + padZero4(targetMm) + ".tif";

@@ -47,11 +47,19 @@ function dumpLayerVisibility(layers, prefix) {
     return out;
 }
 
+// Reading colorProfileName on Duotone docs throws "No such element" —
+// Duotone uses ink curves rather than an ICC profile, so the property
+// has nothing to return. Wrap reads everywhere via this helper.
+function safeProfileName(doc) {
+    try { return doc.colorProfileName || "None"; }
+    catch (e) { return "None"; }
+}
+
 // Compact ICC/mode snapshot for log lines. Surfaces enough state to
 // distinguish a no-op assign from a real remap when reading the log.
 function iccSnapshot(doc) {
     return "mode=" + getColorModeName(doc.mode)
-        + " profile=\"" + (doc.colorProfileName || "None") + "\""
+        + " profile=\"" + safeProfileName(doc) + "\""
         + " bits=" + getBitsPerChannel(doc.bitsPerChannel);
 }
 
@@ -105,7 +113,7 @@ function padRight(s, n) {
 // noise. Used for the "open" line where space matters.
 function describeDocOpen(doc) {
     return getColorModeName(doc.mode)
-        + " · " + doc.bitsPerChannel + "-bit"
+        + " · " + getBitsPerChannel(doc.bitsPerChannel) + "-bit"
         + " · " + Math.round(doc.width.as("px")) + "×" + Math.round(doc.height.as("px")) + " px"
         + " · " + Math.round(doc.resolution) + " DPI"
         + " · " + doc.layers.length + " layer" + (doc.layers.length === 1 ? "" : "s");

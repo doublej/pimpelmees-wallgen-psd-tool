@@ -25,7 +25,7 @@ function main() {
         bitsPerChannel: bpc,
         colorMode: getColorModeName(doc.mode),
         channels: doc.componentChannels.length,
-        iccProfile: doc.colorProfileName || "None"
+        iccProfile: safeProfileName(doc)
     };
     docInfo.widthCm = (docInfo.widthPx / docInfo.dpi * 2.54).toFixed(1);
     docInfo.heightCm = (docInfo.heightPx / docInfo.dpi * 2.54).toFixed(1);
