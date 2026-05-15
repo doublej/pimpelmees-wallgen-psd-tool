@@ -500,8 +500,19 @@ function detectMaskLayers(doc) {
                 var fillRatio = areaPx / (w * h);
                 diag.fillRatio = fillRatio.toFixed(3);
 
-                if (fillRatio < 0.65 || fillRatio > 0.95) {
-                    diag.reason = "fill " + diag.fillRatio + " not circle-like (expect ~0.785)";
+                // Two accepted patterns: solid white disc (cover) or thin
+                // ring/outline (cut-line indicator). Anything in between
+                // (0.45–0.65) or above 0.95 is a near-rectangle and gets
+                // rejected — that's a design layer, not a mask.
+                var pattern = null;
+                if (fillRatio >= MASK_FILL_DISC_MIN && fillRatio <= MASK_FILL_DISC_MAX) {
+                    pattern = "cover";
+                } else if (fillRatio >= MASK_FILL_RING_MIN && fillRatio <= MASK_FILL_RING_MAX) {
+                    pattern = "ring";
+                }
+                if (!pattern) {
+                    diag.reason = "fill " + diag.fillRatio
+                        + " not cover (~0.785) nor ring (" + MASK_FILL_RING_MIN + "–" + MASK_FILL_RING_MAX + ")";
                     diagnostic.push(diag);
                     continue;
                 }
@@ -513,19 +524,19 @@ function detectMaskLayers(doc) {
                     r_px: diaPx / 2,
                     diameter_px: diaPx,
                     diameter_mm: diaPx / dpi * 25.4,
-                    source: "cover-bounds"
+                    source: pattern + "-bounds"
                 };
 
-                diag.pattern = "cover";
+                diag.pattern = pattern;
                 diag.passed = true;
-                diag.reason = "PASS — aspect " + diag.aspect + ", fill " + diag.fillRatio
+                diag.reason = "PASS [" + pattern + "] aspect " + diag.aspect + ", fill " + diag.fillRatio
                     + ", Ø " + Math.round(diaPx) + "px (" + inferredCircle.diameter_mm.toFixed(1) + " mm)";
                 diagnostic.push(diag);
                 result.push({
                     layer: L,
                     name: L.name,
                     path: entry.path,
-                    pattern: "cover",
+                    pattern: pattern,
                     circle: inferredCircle,
                     bbox: ob
                 });

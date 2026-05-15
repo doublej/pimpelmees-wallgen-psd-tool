@@ -29,6 +29,16 @@ var BLEED_DL = 3;
 var MASK_INNER_BUFFER = 0.98;
 var MASK_OUTER_BUFFER = 1.02;
 var MASK_OUTER_OPAQUE_RATIO = 0.9;
+// Per-layer cover-detection fill ratio windows. Square bbox + min size
+// already gate. Two patterns accepted:
+//   solid disc — opaque area ≈ π/4 of bbox (filled white cover)
+//   ring/outline — thin annulus marking the cut line, much lower fill
+// Bracketing keeps a fully-solid rectangle layer (fill ≈ 1.0) from
+// falsely matching as a cover.
+var MASK_FILL_DISC_MIN = 0.65;
+var MASK_FILL_DISC_MAX = 0.95;
+var MASK_FILL_RING_MIN = 0.02;
+var MASK_FILL_RING_MAX = 0.45;
 var NEW_DOC_GRAY_PROFILE = "Gray Gamma 1.0";
 var NEW_DOC_CMYK_PROFILE = "Coated FOGRA39 (ISO 12647-2:2004)";
 
