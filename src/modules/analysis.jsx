@@ -439,10 +439,40 @@ function layerOpaqueOutsideCircle(doc, circle) {
     return res;
 }
 
+// Returns true only when the active layer is essentially transparent inside
+// the inferred circle. The small opaque allowance catches antialiasing.
+function layerTransparentInsideCircle(doc, circle) {
+    var bufferedDia = circle.diameter_px * MASK_INNER_BUFFER;
+    var res = { passed: false, ratio: 1, opaqueArea: 0, innerArea: 0, fallback: false };
+    try { selectInnerEllipse(doc, circle.cx_px, circle.cy_px, bufferedDia); }
+    catch (e) { return res; }
+    var m1 = measureOrApprox(doc);
+    res.innerArea = m1.area;
+    if (m1.fallback) res.fallback = true;
+    if (res.innerArea <= 0) {
+        try { doc.selection.deselect(); } catch (e1) {}
+        return res;
+    }
+    try { selectInnerEllipse(doc, circle.cx_px, circle.cy_px, bufferedDia); }
+    catch (e2) { try { doc.selection.deselect(); } catch (e3) {} return res; }
+    var threwEmpty = false;
+    try { intersectSelectionWithLayerTransparency(doc); }
+    catch (e4) { threwEmpty = true; }
+    if (!threwEmpty && !isSelectionEmpty(doc)) {
+        var m2 = measureOrApprox(doc);
+        res.opaqueArea = m2.area;
+        if (m2.fallback) res.fallback = true;
+    }
+    try { doc.selection.deselect(); } catch (e6) {}
+    res.ratio = res.opaqueArea / res.innerArea;
+    res.passed = res.ratio <= MASK_INNER_OPAQUE_RATIO_MAX;
+    return res;
+}
+
 // Per-layer cover detection — no global circle dependency. For each visible
-// leaf: check the opaque-area bbox is roughly square + reasonably large +
-// circle-shaped (fill ratio ≈ π/4). Each match carries its own inferred
-// circle, so the caller can pick the largest to drive the export Ø.
+// leaf: accept only an opaque square covering the canvas with a transparent
+// centered circular hole. Each match carries its own inferred circle, so the
+// caller can pick the largest to drive the export Ø.
 // Returns array of [{ layer, name, path, pattern, circle, bbox }, ...]
 // with a `.diagnostic` parallel list.
 function detectMaskLayers(doc) {
@@ -533,72 +563,61 @@ function detectMaskLayers(doc) {
                 var fillRatio = areaPx / (w * h);
                 diag.fillRatio = fillRatio.toFixed(3);
 
-                // Three accepted patterns:
-                //   frame-mask — opaque-square-with-circle-hole that
-                //                covers the whole canvas (the actual cut
-                //                cover used by Pimpelmees designers). Most
-                //                reliable: bbox area ≥ 95% canvas + ring-
-                //                range fill ratio. Inner Ø derived from
-                //                clipped_bbox - opaque_pixels = circle area.
-                //   cover     — solid white disc (~π/4 fill); legacy.
-                //   ring      — thin annulus / outline; cut-line indicator.
                 var canvasW = doc.width.as("px"), canvasH = doc.height.as("px");
                 var canvasArea = canvasW * canvasH;
                 var bboxArea = w * h;
                 var coversCanvas = bboxArea >= canvasArea * MASK_FRAME_BBOX_MIN_RATIO;
-
-                var pattern = null;
-                if (coversCanvas
-                        && fillRatio >= MASK_FILL_RING_MIN
-                        && fillRatio <= MASK_FILL_RING_MAX) {
-                    pattern = "frame-mask";
-                } else if (fillRatio >= MASK_FILL_DISC_MIN && fillRatio <= MASK_FILL_DISC_MAX) {
-                    pattern = "cover";
-                } else if (fillRatio >= MASK_FILL_RING_MIN && fillRatio <= MASK_FILL_RING_MAX) {
-                    pattern = "ring";
+                if (!coversCanvas) {
+                    diag.reason = "bbox does not cover canvas";
+                    diagnostic.push(diag);
+                    continue;
                 }
-                if (!pattern) {
+                if (fillRatio < MASK_FRAME_FILL_MIN || fillRatio > MASK_FRAME_FILL_MAX) {
                     diag.reason = "fill " + diag.fillRatio
-                        + " not cover (~0.785) nor ring (" + MASK_FILL_RING_MIN + "–" + MASK_FILL_RING_MAX + ")";
+                        + " not frame-mask (" + MASK_FRAME_FILL_MIN + "–" + MASK_FRAME_FILL_MAX + ")";
                     diagnostic.push(diag);
                     continue;
                 }
 
-                // Inner-circle Ø derivation:
-                //   frame-mask → clipped-bbox-area minus opaque pixels =
-                //                circle area = π·D²/4 → D = 2·√(area/π).
-                //                Center pinned to canvas center (cover is
-                //                always canvas-aligned regardless of bbox
-                //                drift).
-                //   cover/ring → bbox dim (legacy behavior).
-                var cxPx, cyPx, diaPx;
-                if (pattern === "frame-mask") {
-                    var clippedW = Math.min(w, canvasW);
-                    var clippedH = Math.min(h, canvasH);
-                    var clippedArea = clippedW * clippedH;
-                    var holeArea = clippedArea - areaPx;
-                    diaPx = holeArea > 0
-                        ? 2 * Math.sqrt(holeArea / Math.PI)
-                        : Math.min(w, h);
-                    cxPx = canvasW / 2;
-                    cyPx = canvasH / 2;
-                } else {
-                    diaPx = Math.min(w, h);
-                    cxPx = (ol + or) / 2;
-                    cyPx = (ot + obot) / 2;
-                }
+                var clippedW = Math.min(w, canvasW);
+                var clippedH = Math.min(h, canvasH);
+                var clippedArea = clippedW * clippedH;
+                var holeArea = clippedArea - areaPx;
+                var diaPx = holeArea > 0
+                    ? 2 * Math.sqrt(holeArea / Math.PI)
+                    : Math.min(w, h);
                 var inferredCircle = {
-                    cx_px: cxPx,
-                    cy_px: cyPx,
+                    cx_px: canvasW / 2,
+                    cy_px: canvasH / 2,
                     r_px: diaPx / 2,
                     diameter_px: diaPx,
                     diameter_mm: diaPx / dpi * 25.4,
-                    source: pattern + "-bounds"
+                    source: "frame-mask-bounds"
                 };
 
-                diag.pattern = pattern;
+                step = "verify transparent inside";
+                var inner = layerTransparentInsideCircle(doc, inferredCircle);
+                diag.innerOpaqueRatio = inner.ratio.toFixed(3);
+                if (!inner.passed) {
+                    diag.reason = "circle interior not transparent (opaque "
+                        + diag.innerOpaqueRatio + ")";
+                    diagnostic.push(diag);
+                    continue;
+                }
+
+                step = "verify opaque outside";
+                var outer = layerOpaqueOutsideCircle(doc, inferredCircle);
+                diag.outerOpaqueRatio = outer.ratio.toFixed(3);
+                if (!outer.passed) {
+                    diag.reason = "outside circle not opaque enough (opaque "
+                        + diag.outerOpaqueRatio + ")";
+                    diagnostic.push(diag);
+                    continue;
+                }
+
+                diag.pattern = "frame-mask";
                 diag.passed = true;
-                diag.reason = "PASS [" + pattern + "] aspect " + diag.aspect
+                diag.reason = "PASS [frame-mask] aspect " + diag.aspect
                     + ", fill " + diag.fillRatio
                     + ", Ø " + Math.round(diaPx) + "px (" + inferredCircle.diameter_mm.toFixed(1) + " mm)";
                 diagnostic.push(diag);
@@ -606,7 +625,7 @@ function detectMaskLayers(doc) {
                     layer: L,
                     name: L.name,
                     path: entry.path,
-                    pattern: pattern,
+                    pattern: "frame-mask",
                     circle: inferredCircle,
                     bbox: ob
                 });

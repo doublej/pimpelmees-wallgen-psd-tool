@@ -29,22 +29,19 @@ var BLEED_DL = 3;
 // the outer ring (outside the outer buffered circle). Buffers forgive
 // antialiased edges around the detected diameter.
 var MASK_INNER_BUFFER = 0.995;
+var MASK_INNER_OPAQUE_RATIO_MAX = 0.02;
 var MASK_OUTER_BUFFER = 1.005;
 var MASK_OUTER_OPAQUE_RATIO = 0.9;
-// Per-layer cover-detection fill ratio windows. Square bbox + min size
-// already gate. Two patterns accepted:
-//   solid disc — opaque area ≈ π/4 of bbox (filled white cover)
-//   ring/outline — thin annulus marking the cut line, much lower fill
-// Bracketing keeps a fully-solid rectangle layer (fill ≈ 1.0) from
-// falsely matching as a cover.
-var MASK_FILL_DISC_MIN = 0.65;
-var MASK_FILL_DISC_MAX = 0.95;
-var MASK_FILL_RING_MIN = 0.02;
-var MASK_FILL_RING_MAX = 0.45;
+// Frame masks are opaque squares with one transparent circular hole.
+// The opaque area is the square minus the circle; for an inscribed circle
+// that is about 0.215 of the bbox. The wider window allows bleed/buffer
+// variants while rejecting full rectangles and standalone circular art.
+var MASK_FRAME_FILL_MIN = 0.02;
+var MASK_FRAME_FILL_MAX = 0.45;
 // Frame-mask = opaque square covering the canvas with a transparent
 // circular hole. Bbox area must be at least this fraction of canvas
 // area to qualify (handles slight overshoots and 1-2 px insets seen in
-// the wild). Picked over disc/ring when both criteria match.
+// the wild).
 var MASK_FRAME_BBOX_MIN_RATIO = 0.95;
 // Automode auto-hide threshold: only candidates whose Ø is at least
 // AUTO_HIDE_NEAR_LARGEST × largest-Ø get hidden silently. The cover is
