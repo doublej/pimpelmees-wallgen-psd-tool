@@ -12,7 +12,9 @@ var EXPECTED_DPI = 100;
 // BC_DIAMETERS_MM, MS_DIAMETERS_MM, ARC_W_MM, ARC_H_MM come from
 // config-generated.jsx (codegen'd from wallgen/var/catalog/dimensions.json).
 var STROKE_W_MM = 487;
-var RECT_STROKES = [40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110];
+var RECT_STROKES = [
+  40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110,
+];
 var RECT_HEIGHTS_MM = [2400, 2500, 2600, 2700, 2800, 2900];
 var DL_STROKES = [50, 60, 65, 75, 80];
 var DL_HEIGHT_MM = 2000;
@@ -26,8 +28,8 @@ var BLEED_DL = 3;
 // the inner buffered circle AND opaque across ≥ MASK_OUTER_OPAQUE_RATIO of
 // the outer ring (outside the outer buffered circle). Buffers forgive
 // antialiased edges around the detected diameter.
-var MASK_INNER_BUFFER = 0.98;
-var MASK_OUTER_BUFFER = 1.02;
+var MASK_INNER_BUFFER = 0.995;
+var MASK_OUTER_BUFFER = 1.005;
 var MASK_OUTER_OPAQUE_RATIO = 0.9;
 // Per-layer cover-detection fill ratio windows. Square bbox + min size
 // already gate. Two patterns accepted:
@@ -55,5 +57,5 @@ var NEW_DOC_GRAY_PROFILE = "Gray Gamma 1.0";
 var NEW_DOC_CMYK_PROFILE = "Coated FOGRA39 (ISO 12647-2:2004)";
 
 function mmToPx(mm) {
-    return Math.round(mm / 25.4 * EXPECTED_DPI);
+  return Math.round((mm / 25.4) * EXPECTED_DPI);
 }
