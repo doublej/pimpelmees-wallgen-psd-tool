@@ -262,15 +262,23 @@ function selectCirkelDetection(working, events) {
         for (var i = 0; i < maskCandidates.length; i++) {
             var pName = "";
             try { pName = maskCandidates[i].path || maskCandidates[i].layer.name; } catch (eN) {}
-            ev_kv(events, "  candidate", pName + "  Ø=" + Math.round(maskCandidates[i].circle.diameter_px) + " px");
+            var c = maskCandidates[i];
+            ev_kv(events, "  candidate", pName
+                + "  Ø=" + Math.round(c.circle.diameter_px) + " px"
+                + "  pattern=" + (c.pattern || "?"));
         }
-    } else if (events) {
-        // Surface why each leaf was rejected so designers can spot
-        // detection misfires instead of guessing.
+    }
+    // Always dump the per-leaf rejection trail so designers can see why
+    // the actual cover failed to qualify when the wrong shape was picked
+    // (or when a real cover got missed entirely). Costs a few log lines
+    // per file but turns an opaque misfire into an actionable diagnostic.
+    if (events) {
         var diag = (maskCandidates && maskCandidates.diagnostic) || [];
         for (var d = 0; d < diag.length; d++) {
             var de = diag[d];
-            ev_kv(events, "  reject", "[" + de.kind + "] " + de.path + " — " + (de.reason || "unknown"));
+            if (de.passed) continue;
+            ev_kv(events, "  reject", "[" + (de.kind || "?") + "] " + (de.path || de.name || "?")
+                + " — " + (de.reason || "unknown"));
         }
     }
 
@@ -308,8 +316,7 @@ function applyCoverCleanup(working, hideLayers, events) {
     var before = countLayersDeep(working.layers);
     removeHiddenLayersDeep(working, working.layers);
     ev_kv(events, "removeHidden", before + " → " + countLayersDeep(working.layers) + " layers");
-    discardLayerMasksDeep(working, working.layers);
-    ev_kv(events, "discardMasks", "done");
+    discardLayerMasksDeep(working, working.layers, events);
 }
 
 // Deferred mode finishing: assign Gray Gamma 1.0 (grayscale) or convert
@@ -383,11 +390,11 @@ function removeHiddenLayersDeep(doc, layers) {
     }
 }
 
-// True if the active layer carries a pixel layer mask. Probes via
-// Action Manager (`hasUserMask` property) so we can avoid calling Dlt
-// when there's nothing to delete — Photoshop raises a non-suppressible
-// "delete is not available" modal in that case on some versions, even
-// with DialogModes.NO.
+// True if the active layer carries a pixel (user) layer mask. Probes via
+// Action Manager. Used purely for log diagnostics now — discardLayerMasks-
+// Deep no longer gates on this because the property returned false on
+// PSDs that clearly carried masks, causing the cover circle to bake into
+// the TIFF at flatten.
 function activeLayerHasMask() {
     try {
         var ref = new ActionReference();
@@ -398,11 +405,24 @@ function activeLayerHasMask() {
     } catch (e) { return false; }
 }
 
-// Delete (discard, don't apply) the active layer's pixel mask. Caller
-// must verify the layer actually has one — guarded by activeLayerHasMask.
-// Uses canonical "Msk " enum value (Msk + space) instead of stringID
-// "mask" — the stringID form is unrecognised on older PS versions and
-// surfaces a system "delete is not available" dialog.
+// True if the active layer carries a vector mask. Same Action Manager
+// probe, different property. Vector masks survive flatten and re-impose
+// the cover shape unless explicitly discarded.
+function activeLayerHasVectorMask() {
+    try {
+        var ref = new ActionReference();
+        ref.putProperty(charIDToTypeID("Prpr"), stringIDToTypeID("hasVectorMask"));
+        ref.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+        var d = executeActionGet(ref);
+        return d.getBoolean(stringIDToTypeID("hasVectorMask"));
+    } catch (e) { return false; }
+}
+
+// Delete (discard, don't apply) the active layer's pixel mask. Uses
+// canonical "Msk " enum value (Msk + space) — the stringID "mask" form
+// is unrecognised on older PS versions and surfaces a "delete is not
+// available" dialog. Throws when no mask exists; caller's try/catch
+// swallows that.
 function discardActiveLayerMask() {
     var desc = new ActionDescriptor();
     var ref = new ActionReference();
@@ -411,23 +431,39 @@ function discardActiveLayerMask() {
     executeAction(charIDToTypeID("Dlt "), desc, DialogModes.NO);
 }
 
-// Walk visible layers/groups, discard any pixel layer mask. Skips hidden
-// layers (they'll be dropped by flatten anyway) — important so the frame
-// mask layer's own mask isn't touched on its way out. Called pre-flatten
-// so design content under circular layer-masks survives. Wallgen applies
-// the final cut mask downstream.
-function discardLayerMasksDeep(doc, layers) {
+// Delete the active layer's vector mask (path). Same pattern — throws
+// if no vector mask present.
+function discardActiveLayerVectorMask() {
+    var desc = new ActionDescriptor();
+    var ref = new ActionReference();
+    ref.putEnumerated(stringIDToTypeID("path"), stringIDToTypeID("path"), stringIDToTypeID("vectorMask"));
+    desc.putReference(charIDToTypeID("null"), ref);
+    executeAction(charIDToTypeID("Dlt "), desc, DialogModes.NO);
+}
+
+// Walk visible layers/groups, discard any layer mask (pixel + vector).
+// Skips hidden layers (they'll be dropped by flatten anyway). Called
+// pre-flatten so design content under circular layer-masks survives.
+// Tries the deletes blind under try/catch instead of pre-checking
+// hasUserMask/hasVectorMask — the precheck returned false on docs that
+// clearly carried masks, leaving the cover effect baked into the TIFF.
+function discardLayerMasksDeep(doc, layers, events) {
+    var n_pix = 0, n_vec = 0;
     for (var i = 0; i < layers.length; i++) {
         var L = layers[i];
         if (!L.visible) continue;
-        try {
-            doc.activeLayer = L;
-            if (activeLayerHasMask()) discardActiveLayerMask();
-        } catch (e) {}
+        try { doc.activeLayer = L; } catch (eA) { continue; }
+        try { discardActiveLayerMask(); n_pix++; } catch (e1) {}
+        try { discardActiveLayerVectorMask(); n_vec++; } catch (e2) {}
         if (L.typename === "LayerSet") {
-            discardLayerMasksDeep(doc, L.layers);
+            var sub = discardLayerMasksDeep(doc, L.layers, null);
+            if (sub) { n_pix += sub.pix; n_vec += sub.vec; }
         }
     }
+    if (events) {
+        ev_kv(events, "discardMasks", "pixel=" + n_pix + " vector=" + n_vec);
+    }
+    return { pix: n_pix, vec: n_vec };
 }
 
 // Walk layer tree, hide every layer (groups + leaves). Background layers
