@@ -342,12 +342,18 @@ function stepperFlow() {
 // one extra level. Total line width caps at LINE_WIDTH for the file
 // banner so logs read well in TextEdit's default window.
 var LOG_LINE_WIDTH = 78;
-var LOG_KEY_WIDTH = 12;
+var LOG_KEY_WIDTH = 14;
 var LOG_INDENT = "    ";
 var LOG_SUB_INDENT = "        ";
 
 function writeAutomodeLog(folder, results) {
     var f = new File(folder.fsName + "/automode_log.txt");
+    // ExtendScript File defaults to platform legacy on macOS:
+    // ISO-8859 encoding + CR line terminators. That mangles ▸ / → / · in
+    // log content and makes the file open as one giant line in modern
+    // editors. Force UTF-8 + LF before opening.
+    f.encoding = "UTF-8";
+    f.lineFeed = "Unix";
     if (!f.open("w")) return;
 
     var bar = repeatChar("=", LOG_LINE_WIDTH);

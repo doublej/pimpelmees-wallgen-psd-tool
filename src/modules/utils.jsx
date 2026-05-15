@@ -52,7 +52,7 @@ function dumpLayerVisibility(layers, prefix) {
 function iccSnapshot(doc) {
     return "mode=" + getColorModeName(doc.mode)
         + " profile=\"" + (doc.colorProfileName || "None") + "\""
-        + " bits=" + doc.bitsPerChannel;
+        + " bits=" + getBitsPerChannel(doc.bitsPerChannel);
 }
 
 // Plain-language summary of checkIccProfile's verdict so the log
