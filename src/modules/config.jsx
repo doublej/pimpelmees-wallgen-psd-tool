@@ -24,14 +24,6 @@ var BLEED_MS = 3;
 var BLEED_ARC = 3;
 var BLEED_DL = 3;
 
-// Frame-mask detection: a layer qualifies only if it's transparent inside
-// the inner buffered circle AND opaque across ≥ MASK_OUTER_OPAQUE_RATIO of
-// the outer ring (outside the outer buffered circle). Buffers forgive
-// antialiased edges around the detected diameter.
-var MASK_INNER_BUFFER = 0.995;
-var MASK_INNER_OPAQUE_RATIO_MAX = 0.02;
-var MASK_OUTER_BUFFER = 1.005;
-var MASK_OUTER_OPAQUE_RATIO = 0.9;
 // Frame masks are opaque squares with one transparent circular hole.
 // The opaque area is the square minus the circle; for an inscribed circle
 // that is about 0.215 of the bbox. The wider window allows bleed/buffer

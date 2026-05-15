@@ -395,80 +395,6 @@ function isLayerMostlyWhite(doc, circle) {
     return { whiteCount: whiteCount, total: pts.length, mostlyWhite: whiteCount >= 4 };
 }
 
-// Returns { passed, ratio, opaqueArea, outerArea }. Measures what fraction
-// of the doc's outer ring (outside the outer-buffered circle) is opaque on
-// the active layer. Frame masks wrap most of the canvas → ratio near 1.0;
-// rim decoration / vignettes only cover a small ring → low ratio.
-function layerOpaqueOutsideCircle(doc, circle) {
-    var bufferedDia = circle.diameter_px * MASK_OUTER_BUFFER;
-    var res = { passed: false, ratio: 0, opaqueArea: 0, outerArea: 0, fallback: false };
-
-    try {
-        selectInnerEllipse(doc, circle.cx_px, circle.cy_px, bufferedDia);
-        doc.selection.invert();
-    } catch (e) { return res; }
-
-    var m1 = measureOrApprox(doc);
-    res.outerArea = m1.area;
-    if (m1.fallback) res.fallback = true;
-    if (res.outerArea <= 0) {
-        try { doc.selection.deselect(); } catch (e1) {}
-        return res;
-    }
-
-    try {
-        selectInnerEllipse(doc, circle.cx_px, circle.cy_px, bufferedDia);
-        doc.selection.invert();
-    } catch (e2) {
-        try { doc.selection.deselect(); } catch (e3) {}
-        return res;
-    }
-
-    var threwEmpty = false;
-    try { intersectSelectionWithLayerTransparency(doc); }
-    catch (e4) { threwEmpty = true; }
-    if (!threwEmpty && !isSelectionEmpty(doc)) {
-        var m2 = measureOrApprox(doc);
-        res.opaqueArea = m2.area;
-        if (m2.fallback) res.fallback = true;
-    }
-    try { doc.selection.deselect(); } catch (e5) {}
-
-    res.ratio = res.opaqueArea / res.outerArea;
-    res.passed = res.ratio >= MASK_OUTER_OPAQUE_RATIO;
-    return res;
-}
-
-// Returns true only when the active layer is essentially transparent inside
-// the inferred circle. The small opaque allowance catches antialiasing.
-function layerTransparentInsideCircle(doc, circle) {
-    var bufferedDia = circle.diameter_px * MASK_INNER_BUFFER;
-    var res = { passed: false, ratio: 1, opaqueArea: 0, innerArea: 0, fallback: false };
-    try { selectInnerEllipse(doc, circle.cx_px, circle.cy_px, bufferedDia); }
-    catch (e) { return res; }
-    var m1 = measureOrApprox(doc);
-    res.innerArea = m1.area;
-    if (m1.fallback) res.fallback = true;
-    if (res.innerArea <= 0) {
-        try { doc.selection.deselect(); } catch (e1) {}
-        return res;
-    }
-    try { selectInnerEllipse(doc, circle.cx_px, circle.cy_px, bufferedDia); }
-    catch (e2) { try { doc.selection.deselect(); } catch (e3) {} return res; }
-    var threwEmpty = false;
-    try { intersectSelectionWithLayerTransparency(doc); }
-    catch (e4) { threwEmpty = true; }
-    if (!threwEmpty && !isSelectionEmpty(doc)) {
-        var m2 = measureOrApprox(doc);
-        res.opaqueArea = m2.area;
-        if (m2.fallback) res.fallback = true;
-    }
-    try { doc.selection.deselect(); } catch (e6) {}
-    res.ratio = res.opaqueArea / res.innerArea;
-    res.passed = res.ratio <= MASK_INNER_OPAQUE_RATIO_MAX;
-    return res;
-}
-
 // Per-layer cover detection — no global circle dependency. For each visible
 // leaf: accept only an opaque square covering the canvas with a transparent
 // centered circular hole. Each match carries its own inferred circle, so the
@@ -594,26 +520,6 @@ function detectMaskLayers(doc) {
                     diameter_mm: diaPx / dpi * 25.4,
                     source: "frame-mask-bounds"
                 };
-
-                step = "verify transparent inside";
-                var inner = layerTransparentInsideCircle(doc, inferredCircle);
-                diag.innerOpaqueRatio = inner.ratio.toFixed(3);
-                if (!inner.passed) {
-                    diag.reason = "circle interior not transparent (opaque "
-                        + diag.innerOpaqueRatio + ")";
-                    diagnostic.push(diag);
-                    continue;
-                }
-
-                step = "verify opaque outside";
-                var outer = layerOpaqueOutsideCircle(doc, inferredCircle);
-                diag.outerOpaqueRatio = outer.ratio.toFixed(3);
-                if (!outer.passed) {
-                    diag.reason = "outside circle not opaque enough (opaque "
-                        + diag.outerOpaqueRatio + ")";
-                    diagnostic.push(diag);
-                    continue;
-                }
 
                 diag.pattern = "frame-mask";
                 diag.passed = true;
