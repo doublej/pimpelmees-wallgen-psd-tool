@@ -500,12 +500,26 @@ function detectMaskLayers(doc) {
                 var fillRatio = areaPx / (w * h);
                 diag.fillRatio = fillRatio.toFixed(3);
 
-                // Two accepted patterns: solid white disc (cover) or thin
-                // ring/outline (cut-line indicator). Anything in between
-                // (0.45–0.65) or above 0.95 is a near-rectangle and gets
-                // rejected — that's a design layer, not a mask.
+                // Three accepted patterns:
+                //   frame-mask — opaque-square-with-circle-hole that
+                //                covers the whole canvas (the actual cut
+                //                cover used by Pimpelmees designers). Most
+                //                reliable: bbox area ≥ 95% canvas + ring-
+                //                range fill ratio. Inner Ø derived from
+                //                clipped_bbox - opaque_pixels = circle area.
+                //   cover     — solid white disc (~π/4 fill); legacy.
+                //   ring      — thin annulus / outline; cut-line indicator.
+                var canvasW = doc.width.as("px"), canvasH = doc.height.as("px");
+                var canvasArea = canvasW * canvasH;
+                var bboxArea = w * h;
+                var coversCanvas = bboxArea >= canvasArea * MASK_FRAME_BBOX_MIN_RATIO;
+
                 var pattern = null;
-                if (fillRatio >= MASK_FILL_DISC_MIN && fillRatio <= MASK_FILL_DISC_MAX) {
+                if (coversCanvas
+                        && fillRatio >= MASK_FILL_RING_MIN
+                        && fillRatio <= MASK_FILL_RING_MAX) {
+                    pattern = "frame-mask";
+                } else if (fillRatio >= MASK_FILL_DISC_MIN && fillRatio <= MASK_FILL_DISC_MAX) {
                     pattern = "cover";
                 } else if (fillRatio >= MASK_FILL_RING_MIN && fillRatio <= MASK_FILL_RING_MAX) {
                     pattern = "ring";
@@ -517,10 +531,32 @@ function detectMaskLayers(doc) {
                     continue;
                 }
 
-                var diaPx = Math.min(w, h);
+                // Inner-circle Ø derivation:
+                //   frame-mask → clipped-bbox-area minus opaque pixels =
+                //                circle area = π·D²/4 → D = 2·√(area/π).
+                //                Center pinned to canvas center (cover is
+                //                always canvas-aligned regardless of bbox
+                //                drift).
+                //   cover/ring → bbox dim (legacy behavior).
+                var cxPx, cyPx, diaPx;
+                if (pattern === "frame-mask") {
+                    var clippedW = Math.min(w, canvasW);
+                    var clippedH = Math.min(h, canvasH);
+                    var clippedArea = clippedW * clippedH;
+                    var holeArea = clippedArea - areaPx;
+                    diaPx = holeArea > 0
+                        ? 2 * Math.sqrt(holeArea / Math.PI)
+                        : Math.min(w, h);
+                    cxPx = canvasW / 2;
+                    cyPx = canvasH / 2;
+                } else {
+                    diaPx = Math.min(w, h);
+                    cxPx = (ol + or) / 2;
+                    cyPx = (ot + obot) / 2;
+                }
                 var inferredCircle = {
-                    cx_px: (ol + or) / 2,
-                    cy_px: (ot + obot) / 2,
+                    cx_px: cxPx,
+                    cy_px: cyPx,
                     r_px: diaPx / 2,
                     diameter_px: diaPx,
                     diameter_mm: diaPx / dpi * 25.4,
@@ -529,7 +565,8 @@ function detectMaskLayers(doc) {
 
                 diag.pattern = pattern;
                 diag.passed = true;
-                diag.reason = "PASS [" + pattern + "] aspect " + diag.aspect + ", fill " + diag.fillRatio
+                diag.reason = "PASS [" + pattern + "] aspect " + diag.aspect
+                    + ", fill " + diag.fillRatio
                     + ", Ø " + Math.round(diaPx) + "px (" + inferredCircle.diameter_mm.toFixed(1) + " mm)";
                 diagnostic.push(diag);
                 result.push({

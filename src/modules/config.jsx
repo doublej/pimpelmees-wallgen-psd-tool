@@ -39,6 +39,11 @@ var MASK_FILL_DISC_MIN = 0.65;
 var MASK_FILL_DISC_MAX = 0.95;
 var MASK_FILL_RING_MIN = 0.02;
 var MASK_FILL_RING_MAX = 0.45;
+// Frame-mask = opaque square covering the canvas with a transparent
+// circular hole. Bbox area must be at least this fraction of canvas
+// area to qualify (handles slight overshoots and 1-2 px insets seen in
+// the wild). Picked over disc/ring when both criteria match.
+var MASK_FRAME_BBOX_MIN_RATIO = 0.95;
 // Automode auto-hide threshold: only candidates whose Ø is at least
 // AUTO_HIDE_NEAR_LARGEST × largest-Ø get hidden silently. The cover is
 // always the biggest circle in the doc; smaller circular shapes
