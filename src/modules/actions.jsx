@@ -418,9 +418,12 @@ function activeLayerHasVectorMask() {
     } catch (e) { return false; }
 }
 
-// Delete (discard, don't apply) the active layer's pixel mask. Uses
-// canonical "Msk " enum value (Msk + space) — the stringID "mask" form
-// is unrecognised on older PS versions and surfaces a "delete is not
+// Delete (discard, don't apply) the active layer's pixel mask. The
+// `Aply: false` flag is the critical bit — without it Photoshop
+// DEFAULTS TO APPLYING the mask (baking the alpha into pixels), which
+// is exactly the circular clip we're trying to remove. Uses canonical
+// "Msk " enum value (Msk + space); the stringID "mask" form is
+// unrecognised on older PS versions and surfaces a "delete is not
 // available" dialog. Throws when no mask exists; caller's try/catch
 // swallows that.
 function discardActiveLayerMask() {
@@ -428,40 +431,64 @@ function discardActiveLayerMask() {
     var ref = new ActionReference();
     ref.putEnumerated(charIDToTypeID("Chnl"), charIDToTypeID("Chnl"), charIDToTypeID("Msk "));
     desc.putReference(charIDToTypeID("null"), ref);
+    desc.putBoolean(charIDToTypeID("Aply"), false);
     executeAction(charIDToTypeID("Dlt "), desc, DialogModes.NO);
 }
 
-// Delete the active layer's vector mask (path). Same pattern — throws
-// if no vector mask present.
+// Delete the active layer's vector mask (path). Same Aply=false flag
+// to ensure discard semantics, not bake-in.
 function discardActiveLayerVectorMask() {
     var desc = new ActionDescriptor();
     var ref = new ActionReference();
     ref.putEnumerated(stringIDToTypeID("path"), stringIDToTypeID("path"), stringIDToTypeID("vectorMask"));
     desc.putReference(charIDToTypeID("null"), ref);
+    desc.putBoolean(charIDToTypeID("Aply"), false);
     executeAction(charIDToTypeID("Dlt "), desc, DialogModes.NO);
 }
 
 // Walk visible layers/groups, discard any layer mask (pixel + vector).
 // Skips hidden layers (they'll be dropped by flatten anyway). Called
 // pre-flatten so design content under circular layer-masks survives.
-// Tries the deletes blind under try/catch instead of pre-checking
-// hasUserMask/hasVectorMask — the precheck returned false on docs that
-// clearly carried masks, leaving the cover effect baked into the TIFF.
+// Logs each layer that had a mask probed-as-present plus whether the
+// discard succeeded — the previous "discardMasks  pixel=0 vector=0"
+// summary masked the real failure mode (every Dlt was throwing because
+// the descriptor was missing Aply=false, so PS tried to APPLY the mask
+// and failed, leaving the circle clip baked in at flatten).
 function discardLayerMasksDeep(doc, layers, events) {
-    var n_pix = 0, n_vec = 0;
+    var n_pix = 0, n_vec = 0, n_skip = 0;
     for (var i = 0; i < layers.length; i++) {
         var L = layers[i];
         if (!L.visible) continue;
-        try { doc.activeLayer = L; } catch (eA) { continue; }
-        try { discardActiveLayerMask(); n_pix++; } catch (e1) {}
-        try { discardActiveLayerVectorMask(); n_vec++; } catch (e2) {}
+        try { doc.activeLayer = L; } catch (eA) { n_skip++; continue; }
+
+        var hasPix = activeLayerHasMask();
+        var hasVec = activeLayerHasVectorMask();
+        if (hasPix) {
+            try {
+                discardActiveLayerMask();
+                n_pix++;
+                if (events) ev_kv(events, "  unmask-pix", L.name);
+            } catch (e1) {
+                if (events) ev_kv(events, "  unmask-pix-FAIL", L.name + " — " + e1.message);
+            }
+        }
+        if (hasVec) {
+            try {
+                discardActiveLayerVectorMask();
+                n_vec++;
+                if (events) ev_kv(events, "  unmask-vec", L.name);
+            } catch (e2) {
+                if (events) ev_kv(events, "  unmask-vec-FAIL", L.name + " — " + e2.message);
+            }
+        }
         if (L.typename === "LayerSet") {
-            var sub = discardLayerMasksDeep(doc, L.layers, null);
+            var sub = discardLayerMasksDeep(doc, L.layers, events);
             if (sub) { n_pix += sub.pix; n_vec += sub.vec; }
         }
     }
     if (events) {
-        ev_kv(events, "discardMasks", "pixel=" + n_pix + " vector=" + n_vec);
+        ev_kv(events, "discardMasks", "pixel=" + n_pix + " vector=" + n_vec
+            + (n_skip ? " (skipped " + n_skip + " inactive)" : ""));
     }
     return { pix: n_pix, vec: n_vec };
 }
