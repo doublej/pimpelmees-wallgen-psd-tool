@@ -307,8 +307,13 @@ function applyCoverCleanup(working, hideLayers, events) {
         for (var i = 0; i < hideLayers.length; i++) {
             var name = "";
             try { name = hideLayers[i].name; } catch (eN) {}
-            ev_kv(events, "hide", name);
             try { hideLayers[i].visible = false; } catch (e) {}
+            // Verify the hide actually took — some layer states (e.g.
+            // inside a hidden parent group, or with locks) silently
+            // refuse the visible=false assignment.
+            var stillVisible = false;
+            try { stillVisible = hideLayers[i].visible; } catch (eV) {}
+            ev_kv(events, "hide", name + (stillVisible ? "  ⚠ STILL VISIBLE" : ""));
         }
     } else {
         ev_kv(events, "hide", "(none)");
@@ -317,6 +322,12 @@ function applyCoverCleanup(working, hideLayers, events) {
     removeHiddenLayersDeep(working, working.layers);
     ev_kv(events, "removeHidden", before + " → " + countLayersDeep(working.layers) + " layers");
     discardLayerMasksDeep(working, working.layers, events);
+    // Break clipping-mask chains. Design layers may be clipped to the
+    // cover (or to a circle-shaped base below it) — deleting the cover
+    // re-roots the chain to the next layer below, which can also be
+    // circle-shaped. Ungrouping every clipped layer makes them render
+    // their full pixel content at flatten regardless of base shape.
+    ungroupAllClippingDeep(working.layers, events);
 }
 
 // Deferred mode finishing: assign Gray Gamma 1.0 (grayscale) or convert
@@ -367,6 +378,38 @@ function countLayersDeep(layers) {
         n++;
         if (layers[i].typename === "LayerSet") {
             n += countLayersDeep(layers[i].layers);
+        }
+    }
+    return n;
+}
+
+// Walk visible layers/groups, set every clipped layer to grouped=false.
+// Clipping masks (Layer A clipped to Layer B = A renders only where B
+// is opaque) survive flatten and silently re-impose the cover circle if
+// design layers were clipped to the cover (or to anything else circle-
+// shaped below). Logs each layer we ungrouped so designers can see the
+// chain in the trace; emits a single summary at the top-level call.
+function ungroupAllClippingDeep(layers, events) {
+    var n = ungroupAllClippingInner(layers, events);
+    if (events) ev_kv(events, "ungrouped", n + " clipped layer" + (n === 1 ? "" : "s"));
+    return n;
+}
+function ungroupAllClippingInner(layers, events) {
+    var n = 0;
+    for (var i = 0; i < layers.length; i++) {
+        var L = layers[i];
+        if (!L.visible) continue;
+        try {
+            if (L.grouped) {
+                L.grouped = false;
+                n++;
+                if (events) ev_kv(events, "  unclip", L.name);
+            }
+        } catch (e) {
+            if (events) ev_kv(events, "  unclip-FAIL", L.name + " — " + e.message);
+        }
+        if (L.typename === "LayerSet") {
+            n += ungroupAllClippingInner(L.layers, events);
         }
     }
     return n;
