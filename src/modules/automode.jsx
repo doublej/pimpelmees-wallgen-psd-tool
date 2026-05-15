@@ -147,10 +147,25 @@ function automodeRunWorking(working, psdFile, opts, events) {
         return { ok: false, reason: "geen cirkel/cover gedetecteerd" };
     }
 
+    // Only auto-hide candidates close in size to the largest. Smaller
+    // circular shapes (decorative medallions, badges, dots) are design
+    // content the designer wants kept; auto-hiding everything circular
+    // would silently delete them in batch runs. Threshold lives in
+    // config.jsx so cirkel/stepper (interactive) flows keep showing all
+    // candidates and the user opts in per-checkbox.
     var hideLayers = [];
     if (maskCandidates && maskCandidates.length > 0) {
+        var largestPx = maskCandidates[0].circle.diameter_px;
+        var minPx = largestPx * AUTO_HIDE_NEAR_LARGEST;
         for (var mi = 0; mi < maskCandidates.length; mi++) {
-            hideLayers.push(maskCandidates[mi].layer);
+            var c = maskCandidates[mi];
+            if (c.circle.diameter_px >= minPx) {
+                hideLayers.push(c.layer);
+            } else {
+                ev_kv(events, "  keep", (c.path || c.layer.name)
+                    + "  Ø=" + Math.round(c.circle.diameter_px) + " px"
+                    + "  (< " + Math.round(minPx) + " px threshold — kept as design)");
+            }
         }
     }
     applyCoverCleanup(working, hideLayers, events);

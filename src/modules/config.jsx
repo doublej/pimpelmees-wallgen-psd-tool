@@ -39,6 +39,13 @@ var MASK_FILL_DISC_MIN = 0.65;
 var MASK_FILL_DISC_MAX = 0.95;
 var MASK_FILL_RING_MIN = 0.02;
 var MASK_FILL_RING_MAX = 0.45;
+// Automode auto-hide threshold: only candidates whose Ø is at least
+// AUTO_HIDE_NEAR_LARGEST × largest-Ø get hidden silently. The cover is
+// always the biggest circle in the doc; smaller circular shapes
+// (medallions, decorative dots, badges) are design content and must
+// survive the batch run. Interactive flows (cirkel/stepper) ignore
+// this threshold — the user picks per-checkbox.
+var AUTO_HIDE_NEAR_LARGEST = 0.9;
 var NEW_DOC_GRAY_PROFILE = "Gray Gamma 1.0";
 var NEW_DOC_CMYK_PROFILE = "Coated FOGRA39 (ISO 12647-2:2004)";
 
