@@ -28,26 +28,33 @@ function automodeFolder() {
         return;
     }
 
+    // Single collective output dir per batch run — every TIFF + the log
+    // land here, instead of leaving _export folders littered next to each
+    // source PSD.
+    var outputRoot = new Folder(folder.fsName + "/output");
+    if (!outputRoot.exists) outputRoot.create();
+
     var results = [];
     for (var i = 0; i < psdFiles.length; i++) {
         var psdFile = psdFiles[i];
         var res = automodeProcessOne(psdFile, {
             shape: shape,
             diameterList: diameterList,
-            bleedMm: bleedMm
+            bleedMm: bleedMm,
+            outputRoot: outputRoot
         });
         res.file = psdFile.name;
         results.push(res);
     }
 
-    writeAutomodeLog(folder, results);
+    writeAutomodeLog(outputRoot, results);
 
     var okCount = 0, skipCount = 0;
     for (var j = 0; j < results.length; j++) {
         if (results[j].ok) okCount++; else skipCount++;
     }
     alert("Automode klaar. OK: " + okCount + ", overgeslagen: " + skipCount
-        + "\nLog: automode_log.txt");
+        + "\nOutput: " + outputRoot.fsName);
 }
 
 function automodeIsPsdOrPsb(f) {
@@ -151,9 +158,12 @@ function automodeRunWorking(working, psdFile, opts, events) {
     applyFlatten(working, events);
 
     var abbreviation = inferAbbreviation(psdFile.name);
-    var masterDir = psdFile.parent.fsName;
-    var masterBase = psdFile.name.replace(/\.[^.]+$/, "");
-    var outputDir = masterDir + "/" + masterBase + "_export";
+    // Collective output dir for the whole batch — supplied by
+    // automodeFolder. Falls back to per-file _export dir for callers
+    // that didn't pass one (e.g. future single-file invocations).
+    var outputDir = opts.outputRoot
+        ? opts.outputRoot.fsName
+        : (psdFile.parent.fsName + "/" + psdFile.name.replace(/\.[^.]+$/, "") + "_export");
 
     ev_section(events, "export");
     ev_kv(events, "abbrev", abbreviation);
