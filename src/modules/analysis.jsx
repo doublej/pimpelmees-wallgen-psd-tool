@@ -396,9 +396,10 @@ function isLayerMostlyWhite(doc, circle) {
 }
 
 // Per-layer cover detection — no global circle dependency. For each visible
-// leaf: accept only an opaque square covering the canvas with a transparent
-// centered circular hole. Each match carries its own inferred circle, so the
-// caller can pick the largest to drive the export Ø.
+// leaf: accept explicit mask-guide shapes only. Frame masks are opaque
+// squares with a transparent circular hole; circle masks are large normal
+// circular layers used as the cut/mask guide. Each match carries its own
+// inferred circle, so the caller can pick the largest to drive the export Ø.
 // Returns array of [{ layer, name, path, pattern, circle, bbox }, ...]
 // with a `.diagnostic` parallel list.
 function detectMaskLayers(doc) {
@@ -493,37 +494,57 @@ function detectMaskLayers(doc) {
                 var canvasArea = canvasW * canvasH;
                 var bboxArea = w * h;
                 var coversCanvas = bboxArea >= canvasArea * MASK_FRAME_BBOX_MIN_RATIO;
-                if (!coversCanvas) {
-                    diag.reason = "bbox does not cover canvas";
-                    diagnostic.push(diag);
-                    continue;
-                }
-                if (fillRatio < MASK_FRAME_FILL_MIN || fillRatio > MASK_FRAME_FILL_MAX) {
-                    diag.reason = "fill " + diag.fillRatio
-                        + " not frame-mask (" + MASK_FRAME_FILL_MIN + "–" + MASK_FRAME_FILL_MAX + ")";
+                var isFrameMask = coversCanvas
+                    && fillRatio >= MASK_FRAME_FILL_MIN
+                    && fillRatio <= MASK_FRAME_FILL_MAX;
+                var cx = (ol + or) / 2;
+                var cy = (ot + obot) / 2;
+                var centerTol = minDocDim * MASK_CIRCLE_CENTER_TOLERANCE;
+                var isCentral = Math.abs(cx - canvasW / 2) <= centerTol
+                    && Math.abs(cy - canvasH / 2) <= centerTol;
+                var isLarge = Math.min(w, h) >= minDocDim * MASK_CIRCLE_MIN_DOC_RATIO;
+                var isCircleMask = !coversCanvas
+                    && isLarge
+                    && isCentral
+                    && fillRatio >= MASK_CIRCLE_FILL_MIN
+                    && fillRatio <= MASK_CIRCLE_FILL_MAX;
+                if (!isFrameMask && !isCircleMask) {
+                    diag.reason = "not frame/circle mask"
+                        + " (fill " + diag.fillRatio
+                        + ", coversCanvas " + coversCanvas
+                        + ", large " + isLarge
+                        + ", central " + isCentral + ")";
                     diagnostic.push(diag);
                     continue;
                 }
 
-                var clippedW = Math.min(w, canvasW);
-                var clippedH = Math.min(h, canvasH);
-                var clippedArea = clippedW * clippedH;
-                var holeArea = clippedArea - areaPx;
-                var diaPx = holeArea > 0
-                    ? 2 * Math.sqrt(holeArea / Math.PI)
-                    : Math.min(w, h);
+                var pattern = isFrameMask ? "frame-mask" : "circle-mask";
+                var diaPx = Math.min(w, h);
+                var cxPx = cx;
+                var cyPx = cy;
+                if (isFrameMask) {
+                    var clippedW = Math.min(w, canvasW);
+                    var clippedH = Math.min(h, canvasH);
+                    var clippedArea = clippedW * clippedH;
+                    var holeArea = clippedArea - areaPx;
+                    diaPx = holeArea > 0
+                        ? 2 * Math.sqrt(holeArea / Math.PI)
+                        : Math.min(w, h);
+                    cxPx = canvasW / 2;
+                    cyPx = canvasH / 2;
+                }
                 var inferredCircle = {
-                    cx_px: canvasW / 2,
-                    cy_px: canvasH / 2,
+                    cx_px: cxPx,
+                    cy_px: cyPx,
                     r_px: diaPx / 2,
                     diameter_px: diaPx,
                     diameter_mm: diaPx / dpi * 25.4,
-                    source: "frame-mask-bounds"
+                    source: pattern + "-bounds"
                 };
 
-                diag.pattern = "frame-mask";
+                diag.pattern = pattern;
                 diag.passed = true;
-                diag.reason = "PASS [frame-mask] aspect " + diag.aspect
+                diag.reason = "PASS [" + pattern + "] aspect " + diag.aspect
                     + ", fill " + diag.fillRatio
                     + ", Ø " + Math.round(diaPx) + "px (" + inferredCircle.diameter_mm.toFixed(1) + " mm)";
                 diagnostic.push(diag);
@@ -531,7 +552,7 @@ function detectMaskLayers(doc) {
                     layer: L,
                     name: L.name,
                     path: entry.path,
-                    pattern: "frame-mask",
+                    pattern: pattern,
                     circle: inferredCircle,
                     bbox: ob
                 });

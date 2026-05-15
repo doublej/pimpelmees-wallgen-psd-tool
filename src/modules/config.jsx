@@ -24,17 +24,23 @@ var BLEED_MS = 3;
 var BLEED_ARC = 3;
 var BLEED_DL = 3;
 
-// Frame masks are opaque squares with one transparent circular hole.
-// The opaque area is the square minus the circle; for an inscribed circle
-// that is about 0.215 of the bbox. The wider window allows bleed/buffer
-// variants while rejecting full rectangles and standalone circular art.
+// Accepted mask-guide layer shapes:
+//   frame-mask  — opaque square with one transparent circular hole.
+//   circle-mask — large normal circular layer acting as the cut/mask guide.
+// These fill windows reject full rectangles and thin decorative rings.
 var MASK_FRAME_FILL_MIN = 0.02;
 var MASK_FRAME_FILL_MAX = 0.45;
+var MASK_CIRCLE_FILL_MIN = 0.65;
+var MASK_CIRCLE_FILL_MAX = 0.95;
 // Frame-mask = opaque square covering the canvas with a transparent
 // circular hole. Bbox area must be at least this fraction of canvas
 // area to qualify (handles slight overshoots and 1-2 px insets seen in
 // the wild).
 var MASK_FRAME_BBOX_MIN_RATIO = 0.95;
+// Circle-mask must be large and central so small decorative circles,
+// medallions, badges, and dots do not become mask candidates.
+var MASK_CIRCLE_MIN_DOC_RATIO = 0.65;
+var MASK_CIRCLE_CENTER_TOLERANCE = 0.08;
 // Automode auto-hide threshold: only candidates whose Ø is at least
 // AUTO_HIDE_NEAR_LARGEST × largest-Ø get hidden silently. The cover is
 // always the biggest circle in the doc; smaller circular shapes

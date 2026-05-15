@@ -92,10 +92,9 @@ function showDemoMaskConfirmDialog(opts) {
             ? "Maskeerlaag gedetecteerd: " + n + " lagen"
             : "Maskeerlaag gedetecteerd");
         var maskTxt = dlg.add("statictext", undefined,
-            "Deze lagen bedekken het volledige canvas en zijn transparant "
-            + "binnen de cirkel — ze bakken straks als rand in de TIFF, "
-            + "tenzij ze nu uitgeschakeld worden. Vink de lagen aan die "
-            + "verborgen moeten worden.",
+            "Deze lagen lijken snij- of maskeerhulpen voor de cirkel — "
+            + "ze bakken straks mee in de TIFF tenzij ze nu uitgeschakeld "
+            + "worden. Vink de lagen aan die verborgen moeten worden.",
             { multiline: true });
         maskTxt.preferredSize = [-1, 50];
         maskTxt.graphics.font = ScriptUI.newFont("dialog", "Regular", 11);
