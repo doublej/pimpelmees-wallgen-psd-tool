@@ -1,7 +1,3 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## What this is
 
 A macOS `.app` that runs inside Adobe Photoshop via ExtendScript (.jsx). It validates PSD specs (dimensions, DPI, color mode, ICC profile) and converts documents to print-ready flattened LZW-compressed TIFF files. It can also create new documents from predefined wallpaper product templates. All UI text is in Dutch.
