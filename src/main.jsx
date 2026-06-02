@@ -92,6 +92,10 @@ function cirkelFlow() {
     // (we close with DONOTSAVECHANGES) so a duplicate just costs time.
     var working = originalDoc;
 
+    // Tracks the pipeline stage so the catch can name where it broke.
+    // The bare "e.message" alert used to collapse generic Photoshop
+    // errors to "<no additional information available>".
+    var step = "valideer kleurmodus";
     try {
         var mode = working.mode;
         if (mode !== DocumentMode.DUOTONE
@@ -127,9 +131,11 @@ function cirkelFlow() {
                 working.close(SaveOptions.DONOTSAVECHANGES);
                 return;
             }
+            step = "Duotone → grijswaarden";
             convertDuotoneToGrayscale(working);
         }
 
+        step = "ontgrendel lagen";
         unlockAllLayersDeep(working.layers, null);
         app.activeDocument = working;
 
@@ -137,6 +143,7 @@ function cirkelFlow() {
         // cirkelFlow's only divergence: the user picks which candidates to
         // hide via showDemoMaskConfirmDialog, plus a manual-diameter
         // fallback when detection finds nothing.
+        step = "detecteer cirkel / masker";
         var sel = selectCirkelDetection(working, null);
         var detection = sel.detection;
         var maskCandidates = sel.maskCandidates;
@@ -157,6 +164,7 @@ function cirkelFlow() {
             diameterPx = detection.diameter_px;
         }
 
+        step = "render maskervoorbeelden";
         var maskThumbnails = renderMaskCandidateThumbnails(working, maskCandidates);
 
         var abbreviation = inferAbbreviation(psdFile.name);
@@ -169,6 +177,7 @@ function cirkelFlow() {
         // That's why we no longer draw overlay rings or embed cropped PNG
         // previews: there's nothing the user can verify-against by clicking,
         // and the values shown in the dialog already describe the cut.
+        step = "bevestigingsdialoog";
         var confirm = showDemoMaskConfirmDialog({
             shape: shape,
             bleedMm: bleedMm,
@@ -181,10 +190,14 @@ function cirkelFlow() {
         });
         if (!confirm) { working.close(SaveOptions.DONOTSAVECHANGES); return; }
 
+        step = "verwijder cover-lagen";
         applyCoverCleanup(working, confirm.hideLayers, null);
+        step = "kleurmodus afronden";
         applyModeFinishing(working, mode, null);
+        step = "platslaan";
         applyFlatten(working, null);
 
+        step = "TIFF('s) exporteren";
         var saved = exportTiffSet(diameterList, {
             workingDoc: working,
             shape: shape,
@@ -196,7 +209,7 @@ function cirkelFlow() {
 
         alert("Klaar — " + saved.length + " TIFF(s) opgeslagen in:\n" + outputDir);
     } catch (e) {
-        alert("Fout tijdens cirkelverwerking:\n" + e.message);
+        alert("Fout tijdens cirkelverwerking (stap: " + step + "):\n" + formatError(e));
     }
 
     try { working.close(SaveOptions.DONOTSAVECHANGES); } catch (e) {}

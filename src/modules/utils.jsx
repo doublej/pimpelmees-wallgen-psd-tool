@@ -97,6 +97,20 @@ function ev_blank(events) {
     if (events) events.push({ kind: "blank" });
 }
 
+// ExtendScript Error objects carry .number (Photoshop error code), .line
+// (line in the built psd-to-tiff.jsx) and .fileName beyond .message. The
+// cirkel catch used to alert only e.message — on a generic "General
+// Photoshop error occurred" that collapses to "<no additional information
+// available>", hiding which operation broke. Surface every field present
+// so the dialog (and log) name the failing call instead.
+function formatError(e) {
+    if (!e) return "onbekende fout";
+    var parts = [e.message ? String(e.message) : String(e)];
+    if (e.number !== undefined && e.number !== null) parts.push("PS-fout " + e.number);
+    if (e.line !== undefined && e.line !== null) parts.push("regel " + e.line);
+    return parts.join(" · ");
+}
+
 function repeatChar(c, n) {
     var s = "";
     for (var i = 0; i < n; i++) s += c;

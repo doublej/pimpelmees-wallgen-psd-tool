@@ -219,22 +219,29 @@ function exportTiffSet(diameterMmList, opts) {
         ev_subheader(events, "iter " + targetMm + " mm  →  final " + finalMm + " mm");
         var iter = opts.workingDoc.duplicate(opts.abbreviation + "_iter_" + targetMm);
         ev_kv(events, "duplicate", iter.name);
+        var subStep = "schaal inhoud";
         try {
             resizeContentToDiameter(iter, opts.detection.diameter_px, finalMm);
             ev_kv(events, "resize", "Ø " + Math.round(opts.detection.diameter_px) + " px → " + finalMm + " mm");
+            subStep = "canvas passend maken";
             fitCanvasToFinal(iter, finalMm);
             ev_kv(events, "canvas", finalMm + " × " + finalMm + " mm");
+            subStep = "ICC-profiel toewijzen";
             assignTargetProfile(iter);
             ev_kv(events, "profile", "\"" + safeProfileName(iter) + "\"");
 
+            subStep = "TIFF opslaan";
             var fname = opts.abbreviation + "_" + opts.shape + "_" + padZero4(targetMm) + ".tif";
             var outFile = new File(outDir.fsName + "/" + fname);
             saveTiff(iter, outFile);
             ev_kv(events, "save", fname);
             savedNames.push(fname);
         } catch (e) {
-            ev_error(events, "iter " + targetMm + " mm: " + e.message);
-            iter.close(SaveOptions.DONOTSAVECHANGES);
+            ev_error(events, "iter " + targetMm + " mm [" + subStep + "]: " + e.message);
+            try { iter.close(SaveOptions.DONOTSAVECHANGES); } catch (eC) {}
+            // Prefix sub-step + Ø onto the message but re-throw the SAME
+            // Error object so its .line / .number survive for formatError.
+            e.message = targetMm + " mm @ " + subStep + " — " + e.message;
             throw e;
         }
         iter.close(SaveOptions.DONOTSAVECHANGES);
