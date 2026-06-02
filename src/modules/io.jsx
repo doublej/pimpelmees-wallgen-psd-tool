@@ -43,5 +43,24 @@ function saveTiff(doc, file) {
     opts.embedColorProfile = true;
     opts.alphaChannels = false;
     opts.layers = false;
-    doc.saveAs(file, opts, true);
+
+    // Photoshop's saveAs writing a large TIFF straight into a
+    // cloud-synced / network folder (Dropbox, external mounts) fails
+    // intermittently with macOS error -120 (dirNFErr) — surfaced as a
+    // bogus "functionality may not be available in this version of
+    // Photoshop". Save to fast local temp first, then copy to the real
+    // destination; a filesystem copy is far more robust than Photoshop
+    // writing directly to the synced volume.
+    var dest = file.parent;
+    if (!dest.exists && !dest.create()) {
+        throw new Error("kan uitvoermap niet aanmaken: " + dest.fsName);
+    }
+    var tmp = new File(Folder.temp.fsName + "/wallgen_" + (new Date()).getTime() + "_" + file.name);
+    try { if (tmp.exists) tmp.remove(); } catch (eRm) {}
+    doc.saveAs(tmp, opts, true);
+    if (!tmp.copy(file)) {
+        try { tmp.remove(); } catch (eRm2) {}
+        throw new Error("opslaan lukte lokaal, maar kopieren naar bestemming faalde: " + file.fsName);
+    }
+    try { tmp.remove(); } catch (eRm3) {}
 }
